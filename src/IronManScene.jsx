@@ -154,9 +154,8 @@ function SceneContent() {
       if (stand3) stand3.visible = true
       if (fly3)   fly3.visible   = false
       if (shoot3) shoot3.visible = false
-      flamesVisRef.current     = false
-      speedVisRef.current      = false
-      beamIntensityRef.current = 0
+      flamesVisRef.current = false
+      speedVisRef.current  = false
 
       /* ── 0-7%: fade in + arc reactor power-up ── */
       if (t < 0.07) {
