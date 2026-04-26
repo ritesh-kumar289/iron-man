@@ -381,34 +381,32 @@ function SceneContent() {
         camera.lookAt(0, 1.2, 0)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(3, 5, p)
 
-      /* ── 93-97%: arc front → behind the model ── */
+      /* ── 93-97%: arc front → behind, camera rises to ~45° above ── */
       } else if (t < 0.97) {
         const p = (t - 0.93) / 0.04
         const angle  = lerp(0, Math.PI, p)
         const radius = lerp(2.8, 3.2, p)
+        /* y rises from 1.4 to 4.4 (= target_y 1.2 + radius 3.2 → 45° angle) */
         camera.position.set(
           Math.sin(angle) * radius + lerp(0.3, 0, p),
-          lerp(1.4, 1.6, p),
+          lerp(1.4, 4.4, p),
           Math.cos(angle) * radius
         )
         camera.lookAt(0, 1.2, 0)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(5, 8, p)
 
-      /* ── 97-100%: atmospheric back-of-suit view
-                     slow drift + gentle y-sway for an immersive feel ── */
+      /* ── 97-100%: elevated back-of-suit view, gentle drift ── */
       } else {
         const p = (t - 0.97) / 0.03
-        /* gentle oscillation using elapsed time for atmosphere */
-        const elapsed = scroll.offset * 40          /* deterministic "time" from scroll */
+        const elapsed = scroll.offset * 40
         const sway    = Math.sin(elapsed * 0.4) * 0.12
         const bob     = Math.sin(elapsed * 0.6) * 0.06
         camera.position.set(
           lerp(0, sway, Math.min(p * 3, 1)),
-          lerp(1.6, 1.55 + bob, p),
-          lerp(-3.2, -2.8, p)                       /* behind the model, slowly closing in */
+          lerp(4.4, 4.2 + bob, p),
+          lerp(-3.2, -3.0, p)
         )
-        camera.lookAt(0, lerp(1.2, 1.3, p), 0)
-        /* arc reactor pulses behind the suit */
+        camera.lookAt(0, lerp(1.2, 1.2, p), 0)
         if (arcLightRef.current) {
           arcLightRef.current.intensity = lerp(8, 6, p)
         }
@@ -447,10 +445,10 @@ function SceneContent() {
       </group>
 
       {/* ── Fighting model ──
-          scale 0.006 (native mesh is smaller than standing model; 0.001 was too tiny)
+          scale 0.005 (native mesh is smaller than standing model; tuned down slightly from 0.006)
           no rotation override – model is upright in its own space */}
       <group ref={shootRef} scale={modelScale} visible={false}>
-        <primitive object={shoot.scene} scale={0.006} position={[0, 0, 0]} />
+        <primitive object={shoot.scene} scale={0.005} position={[0, 0, 0]} />
       </group>
 
       <SpeedLines visRef={speedVisRef} />
