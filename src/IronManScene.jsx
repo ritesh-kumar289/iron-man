@@ -77,37 +77,7 @@ function SpeedLines({ visRef }) {
   )
 }
 
-/* ─────────────────────────────────────────
-   Repulsor beam
-───────────────────────────────────────── */
-function RepulsorBeam({ intensityRef }) {
-  const ref = useRef()
-  useFrame(({ clock }) => {
-    if (!ref.current) return
-    const iv = intensityRef.current
-    ref.current.visible = iv > 0.05
-    if (!ref.current.visible) return
-    ref.current.material.emissiveIntensity = iv * (3 + Math.sin(clock.getElapsedTime() * 20))
-    const s = 0.06 + iv * 0.14
-    ref.current.scale.x = s
-    ref.current.scale.y = s
-    ref.current.scale.z = 0.5 + iv * 3
-  })
-  return (
-    <mesh ref={ref} position={[0.25, 1.5, 0.2]} rotation={[Math.PI / 2, 0, 0]}>
-      <cylinderGeometry args={[1, 1, 5, 16]} />
-      <meshStandardMaterial
-        emissive="#00aaff"
-        emissiveIntensity={5}
-        color="#000022"
-        transparent
-        opacity={0.92}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
-    </mesh>
-  )
-}
+/* (RepulsorBeam removed) */
 
 /* ─────────────────────────────────────────
    Main scene (lives inside ScrollControls)
@@ -124,13 +94,9 @@ function SceneContent() {
   /* mutated each frame, never cause re-render */
   const flamesVisRef     = useRef(false)
   const speedVisRef      = useRef(false)
-  const beamIntensityRef = useRef(0)
 
   /* (bone-tracked flame refs removed – flames not used on flying model) */
 
-  /* flash overlay */
-  const flashEl = useRef(null)
-  useEffect(() => { flashEl.current = document.getElementById('flash-overlay') }, [])
 
   /* models */
   const stand = useGLTF('/iron_man.glb')
@@ -179,8 +145,6 @@ function SceneContent() {
     const fly3   = flyRef.current
     const shoot3 = shootRef.current
 
-    /* always reset flash so it can't stay stuck white */
-    if (flashEl.current) flashEl.current.style.opacity = '0'
 
     /* ════════════════════════════════════
        ACT 1  (0 → 0.35)
@@ -239,8 +203,9 @@ function SceneContent() {
 
     /* ════════════════════════════════════
        TRANSITION 1 → 2  (35-42%)
-       Cross-fade stand → fly; camera sweeps from behind and lands
-       very close on the chest so the fly model starts already zoomed in
+       Cross-fade stand → fly. Camera sweeps around the outside of the
+       suit (arc from behind → side → front close-up) so it never clips
+       through the model interior.
     ════════════════════════════════════ */
     else if (t < 0.42) {
       const p = (t - 0.35) / 0.07
@@ -249,13 +214,16 @@ function SceneContent() {
       if (shoot3)   shoot3.visible = false
       flamesVisRef.current = false
       speedVisRef.current  = false
-      /* sweep from behind (0,1.55,-2.8) → very close front chest (0,0.8,1.5) */
+      /* arc: angle π (behind) → 0 (front), radius shrinks from 2.8 → 2.0
+         At p=0.5 the camera is on the right side – never inside the mesh. */
+      const camAngle = lerp(Math.PI, 0, p)
+      const radius   = lerp(2.8, 2.0, p)
       camera.position.set(
-        lerp(0,    0.2, p),
-        lerp(1.55, 0.8, p),
-        lerp(-2.8, 1.5, p)
+        Math.sin(camAngle) * radius * 0.55,
+        lerp(1.55, 1.1, p),
+        Math.cos(camAngle) * radius
       )
-      camera.lookAt(0, lerp(1.4, 0.6, p), 0)
+      camera.lookAt(0, lerp(1.4, 0.9, p), 0)
       if (arcLightRef.current) arcLightRef.current.intensity = lerp(3, 2, p)
     }
 
@@ -268,20 +236,19 @@ function SceneContent() {
       if (stand3) stand3.visible = false
       if (fly3)   fly3.visible   = true
       if (shoot3) shoot3.visible = false
-      flamesVisRef.current     = false
-      beamIntensityRef.current = 0
+      flamesVisRef.current = false
 
-      /* ── 42-50%: start very close on body, hold close / slight zoom-in ── */
+      /* ── 42-50%: start close on body front, slowly zoom in ── */
       if (t < 0.50) {
         speedVisRef.current = false
         const p = (t - 0.42) / 0.08
         camera.position.set(
-          lerp(0.2,  0.0, p),
-          lerp(0.8,  1.0, p),
-          lerp(1.5,  1.0, p)
+          lerp(0.0,  0.0, p),
+          lerp(1.1,  1.0, p),
+          lerp(2.0,  1.3, p)
         )
-        camera.lookAt(0, lerp(0.6, 0.8, p), 0)
-        if (fly3) { fly3.position.set(0, lerp(-0.2, 0, p), 0); fly3.rotation.set(0, 0, 0) }
+        camera.lookAt(0, lerp(0.9, 0.8, p), 0)
+        if (fly3) { fly3.position.set(0, lerp(-0.1, 0, p), 0); fly3.rotation.set(0, 0, 0) }
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2, 2.5, p)
 
       /* ── 50-58%: pull back – full flying model revealed + speed lines ── */
@@ -388,15 +355,14 @@ function SceneContent() {
           lerp(Math.cos(Math.PI * 1.15) * 0.7, 5.0, p)
         )
         camera.lookAt(0, lerp(1.1, 1.3, p), 0)
-        beamIntensityRef.current = 0
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(4, 3, p)
       }
     }
 
     /* ════════════════════════════════════
        ACT 3  (88-100%)
-       Fighting model – drift in, orbit behind,
-       over-shoulder repulsor blast
+       Fighting model – front drift, orbit to back, atmospheric
+       back-of-suit cinematic with gentle drift. No blast, no beam.
     ════════════════════════════════════ */
     else {
       if (stand3) stand3.visible = false
@@ -405,58 +371,47 @@ function SceneContent() {
       flamesVisRef.current = false
       speedVisRef.current  = false
 
-      /* ── 88-93%: camera drifts in from front wide shot ── */
+      /* ── 88-93%: drift in from front wide shot ── */
       if (t < 0.93) {
         const p = (t - 0.88) / 0.05
         camera.position.set(
-          lerp(0,   0.4,  p),
-          lerp(1.5, 1.5,  p),
-          lerp(5.0, 2.5,  p)
+          lerp(0,   0.3, p),
+          lerp(1.5, 1.4, p),
+          lerp(5.0, 2.8, p)
         )
-        camera.lookAt(0, 1.3, 0)
-        beamIntensityRef.current = 0
+        camera.lookAt(0, 1.2, 0)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(3, 5, p)
 
-      /* ── 93-97%: parametric arc orbit front → behind ── */
+      /* ── 93-97%: arc front → behind the model ── */
       } else if (t < 0.97) {
         const p = (t - 0.93) / 0.04
         const angle  = lerp(0, Math.PI, p)
-        const radius = lerp(2.5, 3.0, p)
+        const radius = lerp(2.8, 3.2, p)
         camera.position.set(
-          Math.sin(angle) * radius + lerp(0.4, 0, p),
-          lerp(1.5, 1.9, p),
+          Math.sin(angle) * radius + lerp(0.3, 0, p),
+          lerp(1.4, 1.6, p),
           Math.cos(angle) * radius
         )
-        camera.lookAt(0, 1.3, 0)
-        beamIntensityRef.current = lerp(0, 0.4, p)
-        if (arcLightRef.current) arcLightRef.current.intensity = lerp(5, 10, p)
+        camera.lookAt(0, 1.2, 0)
+        if (arcLightRef.current) arcLightRef.current.intensity = lerp(5, 8, p)
 
-      /* ── 97-99%: over-the-shoulder repulsor charging ── */
-      } else if (t < 0.99) {
-        const p = (t - 0.97) / 0.02
-        camera.position.set(
-          lerp(0,   1.8, p),
-          lerp(1.9, 1.7, p),
-          lerp(-3.0, 2.8, p)
-        )
-        camera.lookAt(0, 1.3, 0)
-        beamIntensityRef.current = lerp(0.4, 0.9, p)
-        if (arcLightRef.current) arcLightRef.current.intensity = lerp(10, 15, p)
-
-      /* ── 99-100%: full blast + camera shake + white flash ── */
+      /* ── 97-100%: atmospheric back-of-suit view
+                     slow drift + gentle y-sway for an immersive feel ── */
       } else {
-        const p = (t - 0.99) / 0.01
+        const p = (t - 0.97) / 0.03
+        /* gentle oscillation using elapsed time for atmosphere */
+        const elapsed = scroll.offset * 40          /* deterministic "time" from scroll */
+        const sway    = Math.sin(elapsed * 0.4) * 0.12
+        const bob     = Math.sin(elapsed * 0.6) * 0.06
         camera.position.set(
-          1.8 + (Math.random() - 0.5) * 0.035,
-          1.7 + (Math.random() - 0.5) * 0.035,
-          2.8
+          lerp(0, sway, Math.min(p * 3, 1)),
+          lerp(1.6, 1.55 + bob, p),
+          lerp(-3.2, -2.8, p)                       /* behind the model, slowly closing in */
         )
-        camera.lookAt(0, 1.3, 0)
-        beamIntensityRef.current = 1
-        if (arcLightRef.current) arcLightRef.current.intensity = 20
-        if (flashEl.current) {
-          const fo = p < 0.5 ? p * 2 : (1 - p) * 2
-          flashEl.current.style.opacity = String(fo)
+        camera.lookAt(0, lerp(1.2, 1.3, p), 0)
+        /* arc reactor pulses behind the suit */
+        if (arcLightRef.current) {
+          arcLightRef.current.intensity = lerp(8, 6, p)
         }
       }
     }
@@ -492,12 +447,11 @@ function SceneContent() {
         <primitive object={fly.scene} position={[0, 0, 0]} />
       </group>
 
-      {/* ── Fighting model + repulsor beam ──
-          scale 0.001 to match standing model; no rotation override
-          (model is upright in its own coordinate space) */}
+      {/* ── Fighting model ──
+          scale 0.006 (native mesh is smaller than standing model; 0.001 was too tiny)
+          no rotation override – model is upright in its own space */}
       <group ref={shootRef} scale={modelScale} visible={false}>
-        <primitive object={shoot.scene} scale={0.001} position={[0, 0, 0]} />
-        <RepulsorBeam intensityRef={beamIntensityRef} />
+        <primitive object={shoot.scene} scale={0.006} position={[0, 0, 0]} />
       </group>
 
       <SpeedLines visRef={speedVisRef} />
@@ -539,12 +493,6 @@ export default function IronManScene() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
-
-      {/* flash overlay – written directly from useFrame */}
-      <div
-        id="flash-overlay"
-        style={{ position: 'fixed', inset: 0, background: 'white', opacity: 0, pointerEvents: 'none', zIndex: 20 }}
-      />
 
       {loaded && (
         <div style={{
