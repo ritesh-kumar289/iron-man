@@ -345,6 +345,12 @@ function SceneContent() {
   )
 }
 
+/* ─── Sentinel: fires onLoaded once all siblings inside Suspense have resolved ─── */
+function OnLoaded({ onLoaded }) {
+  useEffect(() => { onLoaded() }, [onLoaded])
+  return null
+}
+
 /* ─── Loading overlay ─── */
 function Loader() {
   return (
@@ -411,11 +417,12 @@ export default function IronManScene() {
         dpr={[1, Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2)]}
         style={{ background: '#000008', width: '100%', height: '100%' }}
       >
-        <Suspense fallback={null} onResolve={() => setLoaded(true)}>
+        <Suspense fallback={null}>
           <ScrollControls pages={10} damping={0.18}>
             <SceneContent />
             <Preload all />
           </ScrollControls>
+          <OnLoaded onLoaded={() => setLoaded(true)} />
         </Suspense>
         <Suspense fallback={null}>
           <Environment preset="night" />
