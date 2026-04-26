@@ -1,4 +1,4 @@
-import { useRef, useEffect, Suspense, useMemo } from 'react'
+import { useRef, useEffect, Suspense, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useGLTF, useScroll, ScrollControls, Environment, Preload } from '@react-three/drei'
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing'
@@ -38,17 +38,20 @@ function Flame({ position, scale = 1, visRef }) {
 }
 
 /* ─── Speed lines (particle sheet) ─── */
+const SPEED_LINE_COUNT = 150
+const SPEED_LINE_POSITIONS = (() => {
+  const arr = new Float32Array(SPEED_LINE_COUNT * 3)
+  for (let i = 0; i < SPEED_LINE_COUNT; i++) {
+    arr[i * 3]     = (Math.random() - 0.5) * 16
+    arr[i * 3 + 1] = (Math.random() - 0.5) * 9
+    arr[i * 3 + 2] = (Math.random() - 0.5) * 24 - 5
+  }
+  return arr
+})()
+
 function SpeedLines({ visRef }) {
-  const count = 150
-  const positions = useMemo(() => {
-    const arr = new Float32Array(count * 3)
-    for (let i = 0; i < count; i++) {
-      arr[i * 3]     = (Math.random() - 0.5) * 16
-      arr[i * 3 + 1] = (Math.random() - 0.5) * 9
-      arr[i * 3 + 2] = (Math.random() - 0.5) * 24 - 5
-    }
-    return arr
-  }, [])
+  const count = SPEED_LINE_COUNT
+  const positions = SPEED_LINE_POSITIONS
   const geoRef  = useRef()
   const pointsRef = useRef()
   useFrame((_, delta) => {
@@ -342,8 +345,33 @@ function SceneContent() {
   )
 }
 
+/* ─── Loading overlay ─── */
+function Loader() {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 30,
+      background: '#000008', display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      flexDirection: 'column', gap: 20,
+      fontFamily: 'monospace',
+    }}>
+      <div style={{
+        width: 60, height: 60, border: '2px solid #00ccff',
+        borderTopColor: 'transparent', borderRadius: '50%',
+        animation: 'ironspin 0.9s linear infinite',
+      }} />
+      <div style={{ color: 'rgba(0,200,255,0.8)', fontSize: 11, letterSpacing: 4 }}>
+        LOADING
+      </div>
+      <style>{`@keyframes ironspin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
+}
+
 /* ─── Root export ─── */
 export default function IronManScene() {
+  const [loaded, setLoaded] = useState(false)
+
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
 
@@ -357,16 +385,20 @@ export default function IronManScene() {
         }}
       />
 
-      {/* Scroll hint */}
-      <div style={{
-        position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-        color: 'rgba(0,200,255,0.7)', fontSize: 11, letterSpacing: 4,
-        fontFamily: 'monospace', pointerEvents: 'none', zIndex: 15,
-        animation: 'ironpulse 2s infinite',
-      }}>
-        SCROLL TO EXPERIENCE
-        <style>{`@keyframes ironpulse{0%,100%{opacity:0.3}50%{opacity:1}}`}</style>
-      </div>
+      {/* Scroll hint – only shown after load */}
+      {loaded && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          color: 'rgba(0,200,255,0.7)', fontSize: 11, letterSpacing: 4,
+          fontFamily: 'monospace', pointerEvents: 'none', zIndex: 15,
+          animation: 'ironpulse 2s infinite',
+        }}>
+          SCROLL TO EXPERIENCE
+          <style>{`@keyframes ironpulse{0%,100%{opacity:0.3}50%{opacity:1}}`}</style>
+        </div>
+      )}
+
+      {!loaded && <Loader />}
 
       <Canvas
         gl={{
@@ -379,11 +411,13 @@ export default function IronManScene() {
         dpr={[1, Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2)]}
         style={{ background: '#000008', width: '100%', height: '100%' }}
       >
-        <Suspense fallback={null}>
+        <Suspense fallback={null} onResolve={() => setLoaded(true)}>
           <ScrollControls pages={10} damping={0.18}>
             <SceneContent />
             <Preload all />
           </ScrollControls>
+        </Suspense>
+        <Suspense fallback={null}>
           <Environment preset="night" />
         </Suspense>
         <EffectComposer>
