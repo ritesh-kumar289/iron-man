@@ -6,9 +6,6 @@ import * as THREE from 'three'
 
 const lerp = THREE.MathUtils.lerp
 
-/* scratch vector – no per-frame allocation */
-const _tmpVec = new THREE.Vector3()
-
 /* ─────────────────────────────────────────
    Flame cone (attached to a wrapper group)
 ───────────────────────────────────────── */
@@ -129,12 +126,7 @@ function SceneContent() {
   const speedVisRef      = useRef(false)
   const beamIntensityRef = useRef(0)
 
-  /* bone-tracked flame wrapper groups */
-  const palmRRef           = useRef()
-  const palmLRef           = useRef()
-  const footRRef           = useRef()
-  const footLRef           = useRef()
-  const flameBonesComputed = useRef(false)
+  /* (bone-tracked flame refs removed – flames not used on flying model) */
 
   /* flash overlay */
   const flashEl = useRef(null)
@@ -176,26 +168,7 @@ function SceneContent() {
     })
   }
 
-  /* smooth bone-position computation (called once fly is visible) */
-  const tryComputeBones = (fly3) => {
-    if (flameBonesComputed.current || !fly3) return
-    const pairs = [
-      [palmRRef, 'finger.r_28'],
-      [palmLRef, 'finger.l_49'],
-      [footRRef, 'leg.r.003_1'],
-      [footLRef, 'leg.l.003_14'],
-    ]
-    let ok = true
-    pairs.forEach(([ref, name]) => {
-      const bone = fly.scene.getObjectByName(name)
-      if (bone && ref.current) {
-        bone.getWorldPosition(_tmpVec)
-        fly3.worldToLocal(_tmpVec)
-        ref.current.position.copy(_tmpVec)
-      } else { ok = false }
-    })
-    if (ok) flameBonesComputed.current = true
-  }
+  /* (tryComputeBones removed – no flames on flying model) */
 
   /* ══════════════════════════════════════
      MAIN FRAME LOOP
@@ -266,73 +239,72 @@ function SceneContent() {
 
     /* ════════════════════════════════════
        TRANSITION 1 → 2  (35-42%)
-       Cross-fade stand → fly, camera rises and pulls forward
+       Cross-fade stand → fly; camera sweeps from behind and lands
+       very close on the chest so the fly model starts already zoomed in
     ════════════════════════════════════ */
     else if (t < 0.42) {
       const p = (t - 0.35) / 0.07
       if (stand3) { stand3.visible = true; fadeGroup(stand3, lerp(1, 0, p)) }
       if (fly3)   { fly3.visible = true;   fadeGroup(fly3,   lerp(0, 1, p)) }
       if (shoot3)   shoot3.visible = false
-      flamesVisRef.current = p > 0.55
+      flamesVisRef.current = false
       speedVisRef.current  = false
-      /* camera sweeps from behind-model up and around to in front */
-      camera.position.set(0, lerp(1.55, -0.5, p), lerp(-2.8, 5.5, p))
-      camera.lookAt(0, lerp(1.4, 0, p), 0)
-      if (arcLightRef.current) arcLightRef.current.intensity = lerp(3, 1, p)
+      /* sweep from behind (0,1.55,-2.8) → very close front chest (0,0.8,1.5) */
+      camera.position.set(
+        lerp(0,    0.2, p),
+        lerp(1.55, 0.8, p),
+        lerp(-2.8, 1.5, p)
+      )
+      camera.lookAt(0, lerp(1.4, 0.6, p), 0)
+      if (arcLightRef.current) arcLightRef.current.intensity = lerp(3, 2, p)
     }
 
     /* ════════════════════════════════════
        ACT 2  (42-78%)
-       Flying model – takeoff, full-flight reveal,
-       360° barrel roll, banking cinematic
+       Flying model – starts very zoomed in on body, pulls back,
+       360° barrel roll, banking cinematic. No thruster flames.
     ════════════════════════════════════ */
     else if (t < 0.78) {
       if (stand3) stand3.visible = false
       if (fly3)   fly3.visible   = true
       if (shoot3) shoot3.visible = false
+      flamesVisRef.current     = false
       beamIntensityRef.current = 0
 
-      tryComputeBones(fly3)
-
-      /* ── 42-50%: takeoff burst + camera zooms into body ── */
+      /* ── 42-50%: start very close on body, hold close / slight zoom-in ── */
       if (t < 0.50) {
-        flamesVisRef.current = true
-        speedVisRef.current  = false
+        speedVisRef.current = false
         const p = (t - 0.42) / 0.08
         camera.position.set(
-          lerp(0,    0.3, p),
-          lerp(-0.5, 0.8, p),
-          lerp(5.5,  2.2, p)
-        )
-        camera.lookAt(0, lerp(0, 0.6, p), 0)
-        if (fly3) { fly3.position.set(0, lerp(-0.5, 0, p), 0); fly3.rotation.set(0, 0, 0) }
-        if (arcLightRef.current) arcLightRef.current.intensity = lerp(1, 2.5, p)
-
-      /* ── 50-58%: pull back – full flying model revealed ── */
-      } else if (t < 0.58) {
-        flamesVisRef.current = true
-        speedVisRef.current  = true
-        const p = (t - 0.50) / 0.08
-        camera.position.set(
-          lerp(0.3, 0,   p),
-          lerp(0.8, 2.5, p),
-          lerp(2.2, 5.5, p)
+          lerp(0.2,  0.0, p),
+          lerp(0.8,  1.0, p),
+          lerp(1.5,  1.0, p)
         )
         camera.lookAt(0, lerp(0.6, 0.8, p), 0)
+        if (fly3) { fly3.position.set(0, lerp(-0.2, 0, p), 0); fly3.rotation.set(0, 0, 0) }
+        if (arcLightRef.current) arcLightRef.current.intensity = lerp(2, 2.5, p)
+
+      /* ── 50-58%: pull back – full flying model revealed + speed lines ── */
+      } else if (t < 0.58) {
+        speedVisRef.current = true
+        const p = (t - 0.50) / 0.08
+        camera.position.set(
+          lerp(0.0, 0,   p),
+          lerp(1.0, 2.5, p),
+          lerp(1.0, 5.5, p)
+        )
+        camera.lookAt(0, lerp(0.8, 0.8, p), 0)
         if (fly3) { fly3.position.set(0, 0, 0); fly3.rotation.set(0, 0, 0) }
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2.5, 2, p)
 
-      /* ── 58-70%: 360° barrel roll – Iron Man spins full Y rotation
-                    while camera slowly orbits for a dynamic angle ── */
+      /* ── 58-70%: 360° barrel roll; camera orbits concurrently ── */
       } else if (t < 0.70) {
-        flamesVisRef.current = true
-        speedVisRef.current  = false
+        speedVisRef.current = false
         const p = (t - 0.58) / 0.12
         if (fly3) {
           fly3.position.set(0, 0, 0)
           fly3.rotation.set(0, p * Math.PI * 2, 0)
         }
-        /* camera arcs from front-right around to slightly-left */
         const camAngle = lerp(0.1, Math.PI * 0.65, p)
         camera.position.set(
           Math.sin(camAngle) * lerp(5.5, 4.5, p),
@@ -344,10 +316,8 @@ function SceneContent() {
 
       /* ── 70-78%: banking side sweep + forward flight ── */
       } else {
-        flamesVisRef.current = true
-        speedVisRef.current  = true
+        speedVisRef.current = true
         const p = (t - 0.70) / 0.08
-        /* continue the orbit arc from where the roll left off */
         const camAngle = lerp(Math.PI * 0.65, Math.PI * 1.0, p)
         camera.position.set(
           Math.sin(camAngle) * lerp(4.5, 3.5, p),
@@ -357,9 +327,9 @@ function SceneContent() {
         camera.lookAt(0, 0.6, 0)
         if (fly3) {
           fly3.rotation.set(
-            lerp(0,    0.18, p),   /* nose-down tilt */
-            Math.PI * 2,           /* keep at end of roll */
-            lerp(0,   -0.35, p)    /* bank */
+            lerp(0,    0.18, p),
+            Math.PI * 2,
+            lerp(0,   -0.35, p)
           )
         }
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(3, 2.5, p)
@@ -367,30 +337,65 @@ function SceneContent() {
     }
 
     /* ════════════════════════════════════
-       TRANSITION 2 → 3  (78-84%)
-       Cross-fade fly → fight, camera repositions to front
+       TRANSITION 2 → 3  (78-88%)
+       Zoom the camera very close into the flying model's body (hides the
+       model swap), switch to fight model at the close-up, then zoom out
+       to reveal the fighting model standing – no visible pop.
     ════════════════════════════════════ */
-    else if (t < 0.84) {
-      const p = (t - 0.78) / 0.06
-      if (stand3) stand3.visible = false
-      if (fly3)   { fly3.visible = true;   fadeGroup(fly3,   lerp(1, 0, p)) }
-      if (shoot3) { shoot3.visible = true; fadeGroup(shoot3, lerp(0, 1, p)) }
+    else if (t < 0.88) {
       flamesVisRef.current = false
       speedVisRef.current  = false
-      /* camera swings from the orbital end-point back to in-front of the fight model */
-      const camAngle = lerp(Math.PI * 1.0, Math.PI * 2.0, p)   /* complete the circle back to front */
-      camera.position.set(
-        Math.sin(camAngle) * lerp(3.5, 5.0, p),
-        lerp(1.5, 1.5, p),
-        Math.cos(camAngle) * lerp(3.5, 5.0, p)
-      )
-      camera.lookAt(0, 1.2, 0)
-      if (arcLightRef.current) arcLightRef.current.intensity = lerp(2.5, 3, p)
+
+      /* Phase A (78-83%): zoom into fly body */
+      if (t < 0.83) {
+        const p = (t - 0.78) / 0.05
+        if (stand3) stand3.visible = false
+        if (fly3)   { fly3.visible = true;  fadeGroup(fly3, lerp(1, 1, p)) }
+        if (shoot3)   shoot3.visible = false
+        const camAngle = lerp(Math.PI * 1.0, Math.PI * 1.15, p)
+        camera.position.set(
+          Math.sin(camAngle) * lerp(3.5, 0.7, p),
+          lerp(1.5, 1.2, p),
+          Math.cos(camAngle) * lerp(3.5, 0.7, p)
+        )
+        camera.lookAt(0, 1.1, 0)
+        if (arcLightRef.current) arcLightRef.current.intensity = lerp(2.5, 4, p)
+
+      /* Phase B (83-85%): swap – fly fades out, shoot fades in, camera still close */
+      } else if (t < 0.85) {
+        const p = (t - 0.83) / 0.02
+        if (stand3) stand3.visible = false
+        if (fly3)   { fly3.visible = true;   fadeGroup(fly3,   lerp(1, 0, p)) }
+        if (shoot3) { shoot3.visible = true; fadeGroup(shoot3, lerp(0, 1, p)) }
+        /* keep camera at the same close-up position */
+        camera.position.set(
+          Math.sin(Math.PI * 1.15) * 0.7,
+          1.2,
+          Math.cos(Math.PI * 1.15) * 0.7
+        )
+        camera.lookAt(0, 1.1, 0)
+        if (arcLightRef.current) arcLightRef.current.intensity = 4
+
+      /* Phase C (85-88%): zoom out from fight model body */
+      } else {
+        const p = (t - 0.85) / 0.03
+        if (stand3) stand3.visible = false
+        if (fly3)     fly3.visible = false
+        if (shoot3) { shoot3.visible = true; fadeGroup(shoot3, 1) }
+        camera.position.set(
+          lerp(Math.sin(Math.PI * 1.15) * 0.7, 0,   p),
+          lerp(1.2, 1.5, p),
+          lerp(Math.cos(Math.PI * 1.15) * 0.7, 5.0, p)
+        )
+        camera.lookAt(0, lerp(1.1, 1.3, p), 0)
+        beamIntensityRef.current = 0
+        if (arcLightRef.current) arcLightRef.current.intensity = lerp(4, 3, p)
+      }
     }
 
     /* ════════════════════════════════════
-       ACT 3  (84-100%)
-       Fighting model – zoom in, orbit behind,
+       ACT 3  (88-100%)
+       Fighting model – drift in, orbit behind,
        over-shoulder repulsor blast
     ════════════════════════════════════ */
     else {
@@ -400,9 +405,9 @@ function SceneContent() {
       flamesVisRef.current = false
       speedVisRef.current  = false
 
-      /* ── 84-90%: camera drifts in from front ── */
-      if (t < 0.90) {
-        const p = (t - 0.84) / 0.06
+      /* ── 88-93%: camera drifts in from front wide shot ── */
+      if (t < 0.93) {
+        const p = (t - 0.88) / 0.05
         camera.position.set(
           lerp(0,   0.4,  p),
           lerp(1.5, 1.5,  p),
@@ -412,10 +417,10 @@ function SceneContent() {
         beamIntensityRef.current = 0
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(3, 5, p)
 
-      /* ── 90-96%: parametric arc orbit around to behind ── */
-      } else if (t < 0.96) {
-        const p = (t - 0.90) / 0.06
-        const angle  = lerp(0, Math.PI, p)        /* 0 = front, π = behind */
+      /* ── 93-97%: parametric arc orbit front → behind ── */
+      } else if (t < 0.97) {
+        const p = (t - 0.93) / 0.04
+        const angle  = lerp(0, Math.PI, p)
         const radius = lerp(2.5, 3.0, p)
         camera.position.set(
           Math.sin(angle) * radius + lerp(0.4, 0, p),
@@ -423,24 +428,24 @@ function SceneContent() {
           Math.cos(angle) * radius
         )
         camera.lookAt(0, 1.3, 0)
-        beamIntensityRef.current = lerp(0, 0.35, p)
+        beamIntensityRef.current = lerp(0, 0.4, p)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(5, 10, p)
 
-      /* ── 96-98%: over-the-shoulder from behind – repulsor fully charging ── */
-      } else if (t < 0.98) {
-        const p = (t - 0.96) / 0.02
+      /* ── 97-99%: over-the-shoulder repulsor charging ── */
+      } else if (t < 0.99) {
+        const p = (t - 0.97) / 0.02
         camera.position.set(
           lerp(0,   1.8, p),
           lerp(1.9, 1.7, p),
           lerp(-3.0, 2.8, p)
         )
         camera.lookAt(0, 1.3, 0)
-        beamIntensityRef.current = lerp(0.35, 0.9, p)
+        beamIntensityRef.current = lerp(0.4, 0.9, p)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(10, 15, p)
 
-      /* ── 98-100%: full blast + camera shake + white flash ── */
+      /* ── 99-100%: full blast + camera shake + white flash ── */
       } else {
-        const p = (t - 0.98) / 0.02
+        const p = (t - 0.99) / 0.01
         camera.position.set(
           1.8 + (Math.random() - 0.5) * 0.035,
           1.7 + (Math.random() - 0.5) * 0.035,
@@ -482,21 +487,16 @@ function SceneContent() {
         <primitive object={stand.scene} scale={0.001} position={[0, 0, 0]} />
       </group>
 
-      {/* ── Flying model + bone-tracked flames ── */}
+      {/* ── Flying model (no attached flames) ── */}
       <group ref={flyRef} scale={modelScale} visible={false}>
         <primitive object={fly.scene} position={[0, 0, 0]} />
-        {/* wrapper groups repositioned to bone world-pos each render */}
-        <group ref={palmRRef}><Flame scale={0.75} visRef={flamesVisRef} /></group>
-        <group ref={palmLRef}><Flame scale={0.75} visRef={flamesVisRef} /></group>
-        <group ref={footRRef}><Flame scale={1.3}  visRef={flamesVisRef} /></group>
-        <group ref={footLRef}><Flame scale={1.3}  visRef={flamesVisRef} /></group>
       </group>
 
       {/* ── Fighting model + repulsor beam ──
-          character lies flat in raw GLB space; rot π/2 stands it up,
-          scale 0.011 → ~2 units tall */}
+          scale 0.001 to match standing model; no rotation override
+          (model is upright in its own coordinate space) */}
       <group ref={shootRef} scale={modelScale} visible={false}>
-        <primitive object={shoot.scene} scale={0.011} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0]} />
+        <primitive object={shoot.scene} scale={0.001} position={[0, 0, 0]} />
         <RepulsorBeam intensityRef={beamIntensityRef} />
       </group>
 
