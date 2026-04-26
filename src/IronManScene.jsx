@@ -6,8 +6,11 @@ import * as THREE from 'three'
 
 const lerp = THREE.MathUtils.lerp
 
+/* Reusable scratch vector – avoids per-frame allocations */
+const _tmpVec = new THREE.Vector3()
+
 /* ─── Blue flame cone ─── */
-function Flame({ position, scale = 1, visRef }) {
+function Flame({ position = [0, 0, 0], scale = 1, visRef }) {
   const meshRef = useRef()
   const matRef = useRef()
   useFrame(({ clock }) => {
@@ -102,7 +105,7 @@ function RepulsorBeam({ intensityRef }) {
     ref.current.scale.z = 0.5 + iv * 3
   })
   return (
-    <mesh ref={ref} position={[0.25, 1.45, -1.5]} rotation={[Math.PI / 2, 0, 0]}>
+    <mesh ref={ref} position={[0.25, 1.5, 0.2]} rotation={[Math.PI / 2, 0, 0]}>
       <cylinderGeometry args={[1, 1, 5, 16]} />
       <meshStandardMaterial
         emissive="#00aaff"
@@ -132,6 +135,13 @@ function SceneContent() {
   const speedVisRef    = useRef(false)
   const beamIntensityRef = useRef(0)
 
+  /* wrapper groups for per-bone flame positioning */
+  const palmRRef = useRef()
+  const palmLRef = useRef()
+  const footRRef = useRef()
+  const footLRef = useRef()
+  const flameBonesComputed = useRef(false)
+
   /* flash DOM ref */
   const flashEl = useRef(null)
   useEffect(() => {
@@ -143,7 +153,7 @@ function SceneContent() {
   const fly   = useGLTF('/iron_man-flying.glb')
   const shoot = useGLTF('/iron_man_last.glb')
 
-  /* fix material transparency on load */
+  /* fix material transparency; hide embedded concrete slab in shoot model */
   useEffect(() => {
     const fix = (model) => {
       model.scene.traverse(c => {
@@ -158,6 +168,11 @@ function SceneContent() {
       })
     }
     fix(stand); fix(fly); fix(shoot)
+
+    /* hide the large concrete platform embedded in iron_man_last.glb */
+    shoot.scene.traverse(c => {
+      if (c.name && c.name.toLowerCase().includes('concrete')) c.visible = false
+    })
   }, [stand, fly, shoot])
 
   const modelScale = size.width < 640 ? 0.65 : 1
@@ -224,6 +239,28 @@ function SceneContent() {
       if (shoot3) shoot3.visible = false
       flamesVisRef.current = true
       beamIntensityRef.current = 0
+
+      /* compute flame positions from bones once the fly group is in the scene */
+      if (!flameBonesComputed.current && fly3) {
+        const bonePairs = [
+          [palmRRef, 'finger.r_28'],
+          [palmLRef, 'finger.l_49'],
+          [footRRef, 'leg.r.003_1'],
+          [footLRef, 'leg.l.003_14'],
+        ]
+        let allFound = true
+        bonePairs.forEach(([ref, name]) => {
+          const bone = fly.scene.getObjectByName(name)
+          if (bone && ref.current) {
+            bone.getWorldPosition(_tmpVec)
+            fly3.worldToLocal(_tmpVec)
+            ref.current.position.copy(_tmpVec)
+          } else {
+            allFound = false
+          }
+        })
+        if (allFound) flameBonesComputed.current = true
+      }
 
       if (t < 0.55) {
         /* takeoff burst */
@@ -315,27 +352,29 @@ function SceneContent() {
       <ambientLight intensity={0.25} />
       <directionalLight position={[5, 8, 5]} intensity={1.1} color="#fff4d0" />
       <directionalLight position={[-4, 2, -3]} intensity={0.35} color="#002255" />
-      <pointLight ref={arcLightRef} position={[0, 1.35, 0.55]} color="#00ccff" intensity={0.5} distance={3} decay={2} />
+      <pointLight ref={arcLightRef} position={[0, 1.5, 0.5]} color="#00ccff" intensity={0.5} distance={4} decay={2} />
 
       <fog attach="fog" args={['#00000a', 10, 50]} />
 
-      {/* Standing model */}
+      {/* Standing model – raw height ~2307 units, scale 0.001 → ~2.3 units tall */}
       <group ref={standRef} scale={modelScale}>
-        <primitive object={stand.scene} position={[0, -1, 0]} />
+        <primitive object={stand.scene} scale={0.001} position={[0, 0, 0]} />
       </group>
 
-      {/* Flying model + flames */}
+      {/* Flying model + bone-tracked flames */}
       <group ref={flyRef} scale={modelScale} visible={false}>
         <primitive object={fly.scene} position={[0, 0, 0]} />
-        <Flame position={[-0.12, -0.32, 0.12]} scale={1.3} visRef={flamesVisRef} />
-        <Flame position={[ 0.12, -0.32, 0.12]} scale={1.3} visRef={flamesVisRef} />
-        <Flame position={[-0.38,  0.05, 0.18]} scale={0.75} visRef={flamesVisRef} />
-        <Flame position={[ 0.38,  0.05, 0.18]} scale={0.75} visRef={flamesVisRef} />
+        {/* wrapper groups are repositioned each frame to sit on the correct bone */}
+        <group ref={palmRRef}><Flame scale={0.75} visRef={flamesVisRef} /></group>
+        <group ref={palmLRef}><Flame scale={0.75} visRef={flamesVisRef} /></group>
+        <group ref={footRRef}><Flame scale={1.3}  visRef={flamesVisRef} /></group>
+        <group ref={footLRef}><Flame scale={1.3}  visRef={flamesVisRef} /></group>
       </group>
 
-      {/* Shooting model + repulsor beam */}
+      {/* Shooting model – character lies flat along -Z in raw space (190 units long);
+          rotation π/2 around X stands it upright, scale 0.011 → ~2 units tall */}
       <group ref={shootRef} scale={modelScale} visible={false}>
-        <primitive object={shoot.scene} position={[0, -1, 0]} />
+        <primitive object={shoot.scene} scale={0.011} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0]} />
         <RepulsorBeam intensityRef={beamIntensityRef} />
       </group>
 
