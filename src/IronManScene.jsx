@@ -1,4 +1,4 @@
-import { useRef, useEffect, Suspense, useState } from 'react'
+import { useRef, useEffect, Suspense, useState, useMemo } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useGLTF, useScroll, ScrollControls, Environment, Preload } from '@react-three/drei'
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing'
@@ -7,27 +7,64 @@ import * as THREE from 'three'
 const lerp = THREE.MathUtils.lerp
 
 /* ─────────────────────────────────────────
-   Low-poly night city (Scene 1 background)
-   Sketchfab root matrix: scale≈5.54 + z→y-up.
-   At group scale=0.08 the skyline is ~15 units wide, ~6 units tall.
-   Positioned behind Iron Man (z=-12) with y=4 to bring base to ground.
+   Low-poly night city – four surrounding panels (N/E/S/W).
+   Each panel at scale=0.28, radius=20 from Iron Man centre.
+   The Sketchfab matrix bakes a ~5.54× scale + z-up→y-up rotation.
+   At group scale=0.28 buildings are ~20 units tall and ~55 units wide.
+   Y=0 leaves building bases ~14 units underground so only upper floors
+   are visible, which is the correct "you're inside the city" feeling.
 ───────────────────────────────────────── */
-function NightCityModel({ groupRef }) {
+function NightCitySurround({ groupRef }) {
   const city = useGLTF('/night_city/scene.gltf')
+
+  /* create three independent clones so each panel can be placed separately */
+  const [c1, c2, c3] = useMemo(
+    () => [city.scene.clone(true), city.scene.clone(true), city.scene.clone(true)],
+    [city]
+  )
+
   useEffect(() => {
-    city.scene.traverse(c => {
-      if (!c.isMesh || !c.material) return
-      if (Array.isArray(c.material)) {
-        c.material = c.material.map(m => { const n = m.clone(); n.transparent = true; return n })
-      } else {
-        c.material = c.material.clone()
-        c.material.transparent = true
-      }
-    })
-  }, [city])
+    const fix = (obj) => {
+      obj.traverse(c => {
+        if (!c.isMesh || !c.material) return
+        if (Array.isArray(c.material)) {
+          c.material = c.material.map(m => { const n = m.clone(); n.transparent = true; return n })
+        } else {
+          c.material = c.material.clone()
+          c.material.transparent = true
+        }
+      })
+    }
+    fix(city.scene); fix(c1); fix(c2); fix(c3)
+  }, [city, c1, c2, c3])
+
+  const SC = 0.28
+  const R  = 20
+
   return (
-    <group ref={groupRef} position={[0, 4.0, -12]} scale={0.08}>
-      <primitive object={city.scene} />
+    <group ref={groupRef}>
+      {/* Dark ground plane */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
+        <planeGeometry args={[80, 80]} />
+        <meshStandardMaterial color="#030310" roughness={1} transparent />
+      </mesh>
+
+      {/* Back wall – faces toward camera (+z) */}
+      <group position={[0, 0, -R]} scale={SC}>
+        <primitive object={city.scene} />
+      </group>
+      {/* Left wall */}
+      <group position={[-R, 0, 0]} rotation={[0, Math.PI / 2, 0]} scale={SC}>
+        <primitive object={c1} />
+      </group>
+      {/* Right wall */}
+      <group position={[R, 0, 0]} rotation={[0, -Math.PI / 2, 0]} scale={SC}>
+        <primitive object={c2} />
+      </group>
+      {/* Front wall (behind starting camera position, visible during wide shots) */}
+      <group position={[0, 0, R + 2]} rotation={[0, Math.PI, 0]} scale={SC}>
+        <primitive object={c3} />
+      </group>
     </group>
   )
 }
@@ -211,8 +248,8 @@ function SceneContent() {
     /* ── Dynamic fog: city haze in Act 1, deep-space in Acts 2 & 3 ── */
     if (fogRef.current) {
       const sf = Math.min(1, Math.max(0, (t - 0.35) / 0.07))
-      fogRef.current.near = lerp(12, 200, sf)
-      fogRef.current.far  = lerp(55, 800, sf)
+      fogRef.current.near = lerp(18, 200, sf)
+      fogRef.current.far  = lerp(80, 800, sf)
     }
 
     /* ════════════════════════════════════
@@ -241,7 +278,7 @@ function SceneContent() {
         camera.lookAt(lerp(-0.5, -0.5, p), lerp(1.5, 0.8, p), 0)
         fadeGroup(stand3, lerp(0, 1, p))
         fadeGroup(car3,   lerp(0, 1, p))
-        fadeGroup(tower3, lerp(0, 0.6, p))
+        fadeGroup(tower3, lerp(0, 0.95, p))
         fadeGroup(city3,  lerp(0, 1, p))
         if (stand3) stand3.position.y = 0
         speedVisRef.current = false
@@ -256,7 +293,7 @@ function SceneContent() {
           lerp(7.5, 5.5, p)
         )
         camera.lookAt(0, lerp(0.8, 1.1, p), 0)
-        fadeGroup(tower3, lerp(0.6, 0.7, p))
+        fadeGroup(tower3, lerp(0.95, 1.0, p))
         if (stand3) stand3.position.y = 0
         speedVisRef.current = false
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(1.5, 2, p)
@@ -270,7 +307,7 @@ function SceneContent() {
           lerp(5.5, 2.0,  p)
         )
         camera.lookAt(0, lerp(1.1, 1.5, p), 0)
-        fadeGroup(tower3, lerp(0.7, 0.8, p))
+        fadeGroup(tower3, lerp(1.0, 1.0, p))
         if (stand3) stand3.position.y = 0
         speedVisRef.current = false
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2, 4, p)
@@ -330,7 +367,7 @@ function SceneContent() {
       if (shoot3) shoot3.visible = false
 
       if (car3)   { car3.visible   = true; fadeGroup(car3,   lerp(1, 0, p)) }
-      if (tower3) { tower3.visible = true; fadeGroup(tower3, lerp(0.7, 0, p)) }
+      if (tower3) { tower3.visible = true; fadeGroup(tower3, lerp(1.0, 0, p)) }
       if (city3)  { city3.visible  = true; fadeGroup(city3,  lerp(1, 0, p)) }
 
       if (galaxy3) {
@@ -503,33 +540,38 @@ function SceneContent() {
         fadeGroup(thanos3, 1)
       }
 
-      /* ── 88-93%: drift in from front ── */
+      /* ── 88-93%: drift in from front; settle at orbit start position ── */
       if (t < 0.93) {
         const p = (t - 0.88) / 0.05
-        camera.position.set(lerp(0, 0.3, p), lerp(1.5, 1.4, p), lerp(5.0, 2.8, p))
+        camera.position.set(lerp(0, 0, p), lerp(1.5, 1.4, p), lerp(5.0, 2.8, p))
         camera.lookAt(0, 1.2, 0)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(3, 5, p)
 
-      /* ── 93-97%: full 360° orbit – Thanos visible from the back half ── */
+      /* ── 93-97%: half-orbit front→behind Iron Man; at angle=π camera is at
+            z=-3.5 with Thanos (z=12) visible straight ahead ── */
       } else if (t < 0.97) {
         const p = (t - 0.93) / 0.04
-        const angle  = lerp(0, Math.PI * 2, p)
+        const angle  = lerp(0, Math.PI, p)        // HALF circle: front → behind
         const radius = lerp(2.8, 3.5, p)
         camera.position.set(
-          Math.sin(angle) * radius + lerp(0.3, 0, p),
+          Math.sin(angle) * radius,
           lerp(1.4, 2.5, p),
           Math.cos(angle) * radius
         )
         camera.lookAt(0, 1.2, 0)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(5, 8, p)
 
-      /* ── 97-100%: straight zoom-in toward arc reactor ── */
+      /* ── 97-100%: fly toward Thanos – our true final scene ── */
       } else {
         const p  = (t - 0.97) / 0.03
         const ep = p * p * (3 - 2 * p)
-        camera.position.set(lerp(0, 0, ep), lerp(2.5, 1.3, ep), lerp(3.5, 1.0, ep))
-        camera.lookAt(0, 1.2, 0)
-        if (arcLightRef.current) arcLightRef.current.intensity = lerp(8, 12, ep)
+        /* fade Iron Man out quickly so he doesn't block the zoom path */
+        fadeGroup(shoot3, lerp(1, 0, Math.min(1, p * 4)))
+        /* camera flies from behind Iron Man (z=-3.5) toward Thanos (z=12) */
+        camera.position.set(lerp(0, 0.2, ep), lerp(2.5, 1.2, ep), lerp(-3.5, 10.5, ep))
+        /* look target shifts from Iron Man to Thanos face */
+        camera.lookAt(lerp(0, 0, ep), lerp(1.2, 0.4, ep), lerp(0, 12, ep))
+        if (arcLightRef.current) arcLightRef.current.intensity = lerp(8, 14, ep)
       }
     }
   })
@@ -539,9 +581,10 @@ function SceneContent() {
   ══════════════════════════════════════ */
   return (
     <>
-      <ambientLight intensity={0.2} />
-      <directionalLight position={[5, 8, 5]}   intensity={1.1} color="#fff4d0" />
-      <directionalLight position={[-4, 2, -3]} intensity={0.35} color="#002255" />
+      <ambientLight intensity={0.35} />
+      <directionalLight position={[5, 8, 5]}   intensity={1.4} color="#fff4d0" />
+      <directionalLight position={[-4, 2, -3]} intensity={0.4} color="#002255" />
+      {/* Arc reactor glow on Iron Man */}
       <pointLight
         ref={arcLightRef}
         position={[0, 1.5, 0.5]}
@@ -550,11 +593,15 @@ function SceneContent() {
         distance={4}
         decay={2}
       />
+      {/* Dedicated tower illumination */}
+      <pointLight position={[0, 8, -13]} color="#aaddff" intensity={4} distance={30} decay={2} />
+      {/* Dedicated Thanos illumination */}
+      <pointLight position={[0, 5, 12]}  color="#ff7744" intensity={5} distance={25} decay={2} />
 
-      <fog ref={fogRef} attach="fog" args={['#00000a', 12, 55]} />
+      <fog ref={fogRef} attach="fog" args={['#00000a', 18, 80]} />
 
-      {/* ── Night city (Scene 1 only) ── */}
-      <NightCityModel groupRef={cityRef} />
+      {/* ── Night city surrounding (Scene 1 only) ── */}
+      <NightCitySurround groupRef={cityRef} />
 
       {/* ── Galaxy sky sphere (Scenes 2 & 3) ── */}
       <GalaxySky groupRef={galaxyRef} />
@@ -572,8 +619,8 @@ function SceneContent() {
         <primitive object={car.scene} position={[0, 0, 0]} />
       </group>
 
-      {/* ── Avengers Tower – slightly bigger (scale 0.13) and pushed farther back ── */}
-      <group ref={towerRef} position={[0, 0, -28]} scale={0.13}>
+      {/* ── Avengers Tower – bigger scale, mid-ground position ── */}
+      <group ref={towerRef} position={[0, 0, -16]} scale={0.22}>
         <primitive object={tower.scene} />
       </group>
 
