@@ -1,4 +1,4 @@
-import { useRef, useEffect, Suspense, useState, useMemo } from 'react'
+import { useRef, useEffect, Suspense, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useGLTF, useScroll, ScrollControls, Environment, Preload } from '@react-three/drei'
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing'
@@ -7,63 +7,37 @@ import * as THREE from 'three'
 const lerp = THREE.MathUtils.lerp
 
 /* ─────────────────────────────────────────
-   LA Helipad panorama – four surrounding panels (N/E/S/W).
-   Each panel at scale=0.55, radius=22 from Iron Man centre.
-   The panels are raised so their bases sit at y=-4 (below floor level),
-   placing the camera well inside the building ring for all Act-1 shots.
+   LA Helipad sky sphere (Scene 1 / Act 1)
+   The GLB is a panoramic sphere (same kind as galaxy.glb).
+   Scaled up to 320 units so the camera always sits inside it.
+   The helipad landing pad is on the top of the sphere interior,
+   giving the impression of standing on a rooftop helipad.
 ───────────────────────────────────────── */
-function HelipadSurround({ groupRef }) {
-  const city = useGLTF('/sky_pano_-_l.a._helipad.glb')
-
-  /* create three independent clones so each panel can be placed separately */
-  const [c1, c2, c3] = useMemo(
-    () => [city.scene.clone(true), city.scene.clone(true), city.scene.clone(true)],
-    [city]
-  )
-
+function HelipadSky({ groupRef }) {
+  const helipad = useGLTF('/sky_pano_-_l.a._helipad.glb')
   useEffect(() => {
-    const fix = (obj) => {
-      obj.traverse(c => {
-        if (!c.isMesh || !c.material) return
-        if (Array.isArray(c.material)) {
-          c.material = c.material.map(m => { const n = m.clone(); n.transparent = true; return n })
-        } else {
-          c.material = c.material.clone()
-          c.material.transparent = true
-        }
-      })
-    }
-    fix(city.scene); fix(c1); fix(c2); fix(c3)
-  }, [city, c1, c2, c3])
-
-  const SC = 0.55
-  const R  = 22
-  const Y  = -4     // lower base so buildings tower above camera
-
+    helipad.scene.traverse(c => {
+      if (!c.isMesh || !c.material) return
+      if (Array.isArray(c.material)) {
+        c.material = c.material.map(m => {
+          const n = m.clone()
+          n.side = THREE.DoubleSide
+          n.depthWrite = false
+          n.transparent = true
+          return n
+        })
+      } else {
+        const n = c.material.clone()
+        n.side = THREE.DoubleSide
+        n.depthWrite = false
+        n.transparent = true
+        c.material = n
+      }
+    })
+  }, [helipad])
   return (
     <group ref={groupRef}>
-      {/* Dark ground plane */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-        <planeGeometry args={[100, 100]} />
-        <meshStandardMaterial color="#030310" roughness={1} transparent />
-      </mesh>
-
-      {/* Back wall – faces toward camera (+z) */}
-      <group position={[0, Y, -R]} scale={SC}>
-        <primitive object={city.scene} />
-      </group>
-      {/* Left wall */}
-      <group position={[-R, Y, 0]} rotation={[0, Math.PI / 2, 0]} scale={SC}>
-        <primitive object={c1} />
-      </group>
-      {/* Right wall */}
-      <group position={[R, Y, 0]} rotation={[0, -Math.PI / 2, 0]} scale={SC}>
-        <primitive object={c2} />
-      </group>
-      {/* Front wall (behind starting camera position, visible during wide shots) */}
-      <group position={[0, Y, R + 2]} rotation={[0, Math.PI, 0]} scale={SC}>
-        <primitive object={c3} />
-      </group>
+      <primitive object={helipad.scene} scale={320} />
     </group>
   )
 }
@@ -183,8 +157,7 @@ function SceneContent() {
   const shootRef    = useRef()
   const arcLightRef = useRef()
   const carRef      = useRef()
-  const towerRef    = useRef()
-  /* new environment refs */
+  /* environment refs */
   const cityRef     = useRef()
   const galaxyRef   = useRef()
   const thanosRef   = useRef()
@@ -197,7 +170,6 @@ function SceneContent() {
   const fly    = useGLTF('/iron_man-flying.glb')
   const shoot  = useGLTF('/iron_man_last.glb')
   const car    = useGLTF('/koenigsegg/scene.gltf')
-  const tower  = useGLTF('/avengers_tower/scene.gltf')
 
   /* prepare materials – clone + enable transparency */
   useEffect(() => {
@@ -212,11 +184,11 @@ function SceneContent() {
         }
       })
     }
-    fix(stand); fix(fly); fix(shoot); fix(car); fix(tower)
+    fix(stand); fix(fly); fix(shoot); fix(car)
     shoot.scene.traverse(c => {
       if (c.name && c.name.toLowerCase().includes('concrete')) c.visible = false
     })
-  }, [stand, fly, shoot, car, tower])
+  }, [stand, fly, shoot, car])
 
   const modelScale = size.width < 640 ? 0.65 : 1
 
@@ -239,7 +211,6 @@ function SceneContent() {
     const fly3   = flyRef.current
     const shoot3 = shootRef.current
     const car3   = carRef.current
-    const tower3 = towerRef.current
     const city3  = cityRef.current
     const galaxy3 = galaxyRef.current
     const thanos3 = thanosRef.current
@@ -253,7 +224,7 @@ function SceneContent() {
 
     /* ════════════════════════════════════
        ACT 1  (0 → 0.35)
-       Standing model + Koenigsegg + Avengers Tower + Night City.
+       Standing model + Koenigsegg + Helipad sky.
        Camera: wide establishing zoom-out → zoom to face → orbital sweep → behind.
     ════════════════════════════════════ */
     if (t < 0.35) {
@@ -261,7 +232,6 @@ function SceneContent() {
       if (fly3)   fly3.visible   = false
       if (shoot3) shoot3.visible = false
       if (car3)   car3.visible   = true
-      if (tower3) tower3.visible = true
       if (city3)  city3.visible  = true
       if (galaxy3) galaxy3.visible = false
       if (thanos3) thanos3.visible = false
@@ -277,7 +247,6 @@ function SceneContent() {
         camera.lookAt(lerp(-0.5, -0.5, p), lerp(1.5, 0.8, p), 0)
         fadeGroup(stand3, lerp(0, 1, p))
         fadeGroup(car3,   lerp(0, 1, p))
-        fadeGroup(tower3, lerp(0, 0.95, p))
         fadeGroup(city3,  lerp(0, 1, p))
         if (stand3) stand3.position.y = 0
         speedVisRef.current = false
@@ -292,7 +261,6 @@ function SceneContent() {
           lerp(7.5, 5.5, p)
         )
         camera.lookAt(0, lerp(0.8, 1.1, p), 0)
-        fadeGroup(tower3, lerp(0.95, 1.0, p))
         if (stand3) stand3.position.y = 0
         speedVisRef.current = false
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(1.5, 2, p)
@@ -306,7 +274,6 @@ function SceneContent() {
           lerp(5.5, 2.0,  p)
         )
         camera.lookAt(0, lerp(1.1, 1.5, p), 0)
-        fadeGroup(tower3, lerp(1.0, 1.0, p))
         if (stand3) stand3.position.y = 0
         speedVisRef.current = false
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2, 4, p)
@@ -347,7 +314,7 @@ function SceneContent() {
     /* ════════════════════════════════════
        TRANSITION 1 → 2  (35-42%)
        Stand continues rising & fades out; fly fades in.
-       City/tower/car fade out; galaxy fades in.
+       City/car fade out; galaxy fades in.
     ════════════════════════════════════ */
     else if (t < 0.42) {
       const p = (t - 0.35) / 0.07
@@ -366,7 +333,6 @@ function SceneContent() {
       if (shoot3) shoot3.visible = false
 
       if (car3)   { car3.visible   = true; fadeGroup(car3,   lerp(1, 0, p)) }
-      if (tower3) { tower3.visible = true; fadeGroup(tower3, lerp(1.0, 0, p)) }
       if (city3)  { city3.visible  = true; fadeGroup(city3,  lerp(1, 0, p)) }
 
       if (galaxy3) {
@@ -398,7 +364,6 @@ function SceneContent() {
       if (fly3)   fly3.visible   = true
       if (shoot3) shoot3.visible = false
       if (car3)   car3.visible   = false
-      if (tower3) tower3.visible = false
       if (city3)  city3.visible  = false
       if (galaxy3) { galaxy3.visible = true; fadeGroup(galaxy3, 1) }
       if (thanos3) thanos3.visible = false
@@ -461,7 +426,6 @@ function SceneContent() {
     else if (t < 0.88) {
       speedVisRef.current = false
       if (car3)   car3.visible   = false
-      if (tower3) tower3.visible = false
       if (city3)  city3.visible  = false
       if (galaxy3) { galaxy3.visible = true; fadeGroup(galaxy3, 1) }
 
@@ -527,7 +491,6 @@ function SceneContent() {
       if (fly3)   fly3.visible   = false
       if (shoot3) shoot3.visible = true
       if (car3)   car3.visible   = false
-      if (tower3) tower3.visible = false
       if (city3)  city3.visible  = false
       if (galaxy3) { galaxy3.visible = true; fadeGroup(galaxy3, 1) }
       speedVisRef.current = false
@@ -592,15 +555,19 @@ function SceneContent() {
         distance={4}
         decay={2}
       />
-      {/* Dedicated tower illumination */}
-      <pointLight position={[0, 8, -13]} color="#aaddff" intensity={4} distance={30} decay={2} />
       {/* Dedicated Thanos illumination */}
       <pointLight position={[0, 5, 12]}  color="#ff7744" intensity={5} distance={25} decay={2} />
 
       <fog ref={fogRef} attach="fog" args={['#00000a', 18, 80]} />
 
-      {/* ── LA Helipad city surrounding (Scene 1 only) ── */}
-      <HelipadSurround groupRef={cityRef} />
+      {/* ── Dark ground plane ── */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
+        <planeGeometry args={[200, 200]} />
+        <meshStandardMaterial color="#030310" roughness={1} />
+      </mesh>
+
+      {/* ── LA Helipad sky sphere (Scene 1 only) ── */}
+      <HelipadSky groupRef={cityRef} />
 
       {/* ── Galaxy sky sphere (Scenes 2 & 3) ── */}
       <GalaxySky groupRef={galaxyRef} />
@@ -616,11 +583,6 @@ function SceneContent() {
       {/* ── Koenigsegg One:1 – slightly smaller (×0.88) ── */}
       <group ref={carRef} position={[-1.7, 0, 0.5]} rotation={[0, -0.35, 0]} scale={modelScale * 0.88}>
         <primitive object={car.scene} position={[0, 0, 0]} />
-      </group>
-
-      {/* ── Avengers Tower – prominent mid-ground ── */}
-      <group ref={towerRef} position={[0, 0, -16]} scale={0.38}>
-        <primitive object={tower.scene} />
       </group>
 
       {/* ── Flying model ── */}
@@ -671,7 +633,6 @@ useGLTF.preload('/iron_man.glb')
 useGLTF.preload('/iron_man-flying.glb')
 useGLTF.preload('/iron_man_last.glb')
 useGLTF.preload('/koenigsegg/scene.gltf')
-useGLTF.preload('/avengers_tower/scene.gltf')
 useGLTF.preload('/sky_pano_-_l.a._helipad.glb')
 useGLTF.preload('/galaxy.glb')
 useGLTF.preload('/thanos.glb')
