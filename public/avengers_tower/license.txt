@@ -1,0 +1,11 @@
+Model Information:
+* title:	Followers special
+* source:	https://sketchfab.com/3d-models/followers-special-97e913167b3b46e6922dab2c53d49126
+* author:	Ahad4940 (https://sketchfab.com/Ahad4940)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Followers special" (https://sketchfab.com/3d-models/followers-special-97e913167b3b46e6922dab2c53d49126) by Ahad4940 (https://sketchfab.com/Ahad4940) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
