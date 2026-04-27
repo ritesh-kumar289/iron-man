@@ -7,15 +7,13 @@ import * as THREE from 'three'
 const lerp = THREE.MathUtils.lerp
 
 /* ─────────────────────────────────────────
-   Low-poly night city – four surrounding panels (N/E/S/W).
-   Each panel at scale=0.28, radius=20 from Iron Man centre.
-   The Sketchfab matrix bakes a ~5.54× scale + z-up→y-up rotation.
-   At group scale=0.28 buildings are ~20 units tall and ~55 units wide.
-   Y=0 leaves building bases ~14 units underground so only upper floors
-   are visible, which is the correct "you're inside the city" feeling.
+   LA Helipad panorama – four surrounding panels (N/E/S/W).
+   Each panel at scale=0.55, radius=22 from Iron Man centre.
+   The panels are raised so their bases sit at y=-4 (below floor level),
+   placing the camera well inside the building ring for all Act-1 shots.
 ───────────────────────────────────────── */
-function NightCitySurround({ groupRef }) {
-  const city = useGLTF('/night_city/scene.gltf')
+function HelipadSurround({ groupRef }) {
+  const city = useGLTF('/sky_pano_-_l.a._helipad.glb')
 
   /* create three independent clones so each panel can be placed separately */
   const [c1, c2, c3] = useMemo(
@@ -38,31 +36,32 @@ function NightCitySurround({ groupRef }) {
     fix(city.scene); fix(c1); fix(c2); fix(c3)
   }, [city, c1, c2, c3])
 
-  const SC = 0.28
-  const R  = 20
+  const SC = 0.55
+  const R  = 22
+  const Y  = -4     // lower base so buildings tower above camera
 
   return (
     <group ref={groupRef}>
       {/* Dark ground plane */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-        <planeGeometry args={[80, 80]} />
+        <planeGeometry args={[100, 100]} />
         <meshStandardMaterial color="#030310" roughness={1} transparent />
       </mesh>
 
       {/* Back wall – faces toward camera (+z) */}
-      <group position={[0, 0, -R]} scale={SC}>
+      <group position={[0, Y, -R]} scale={SC}>
         <primitive object={city.scene} />
       </group>
       {/* Left wall */}
-      <group position={[-R, 0, 0]} rotation={[0, Math.PI / 2, 0]} scale={SC}>
+      <group position={[-R, Y, 0]} rotation={[0, Math.PI / 2, 0]} scale={SC}>
         <primitive object={c1} />
       </group>
       {/* Right wall */}
-      <group position={[R, 0, 0]} rotation={[0, -Math.PI / 2, 0]} scale={SC}>
+      <group position={[R, Y, 0]} rotation={[0, -Math.PI / 2, 0]} scale={SC}>
         <primitive object={c2} />
       </group>
       {/* Front wall (behind starting camera position, visible during wide shots) */}
-      <group position={[0, 0, R + 2]} rotation={[0, Math.PI, 0]} scale={SC}>
+      <group position={[0, Y, R + 2]} rotation={[0, Math.PI, 0]} scale={SC}>
         <primitive object={c3} />
       </group>
     </group>
@@ -407,12 +406,12 @@ function SceneContent() {
       const flyProgress = Math.max(0, (t - 0.50) / 0.28)
       const flyY = lerp(0, 4.8, flyProgress)
 
-      /* ── 42-50%: close shot; fly model settles from takeoff height to 0 ── */
+      /* ── 42-50%: zoomed-out entry; fly model settles from takeoff height to 0 ── */
       if (t < 0.50) {
         speedVisRef.current = false
         const p = (t - 0.42) / 0.08
-        camera.position.set(0, lerp(2.2, 1.0, p), lerp(3.5, 1.3, p))
-        camera.lookAt(0, lerp(2.0, 0.8, p), 0)
+        camera.position.set(0, lerp(3.5, 1.8, p), lerp(6.5, 2.8, p))
+        camera.lookAt(0, lerp(2.5, 0.8, p), 0)
         if (fly3) { fly3.position.set(0, lerp(TAKEOFF_Y * 0.5, 0, p), 0); fly3.rotation.set(0, 0, 0) }
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2, 2.5, p)
 
@@ -568,9 +567,9 @@ function SceneContent() {
         /* fade Iron Man out quickly so he doesn't block the zoom path */
         fadeGroup(shoot3, lerp(1, 0, Math.min(1, p * 4)))
         /* camera flies from behind Iron Man (z=-3.5) toward Thanos (z=12) */
-        camera.position.set(lerp(0, 0.2, ep), lerp(2.5, 1.2, ep), lerp(-3.5, 10.5, ep))
-        /* look target shifts from Iron Man to Thanos face */
-        camera.lookAt(lerp(0, 0, ep), lerp(1.2, 0.4, ep), lerp(0, 12, ep))
+        camera.position.set(lerp(0, 0.2, ep), lerp(2.5, 2.2, ep), lerp(-3.5, 10.0, ep))
+        /* look target tracks to Thanos face (y≈1.8 at scale=0.15) */
+        camera.lookAt(lerp(0, 0, ep), lerp(1.2, 1.8, ep), lerp(0, 12, ep))
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(8, 14, ep)
       }
     }
@@ -600,8 +599,8 @@ function SceneContent() {
 
       <fog ref={fogRef} attach="fog" args={['#00000a', 18, 80]} />
 
-      {/* ── Night city surrounding (Scene 1 only) ── */}
-      <NightCitySurround groupRef={cityRef} />
+      {/* ── LA Helipad city surrounding (Scene 1 only) ── */}
+      <HelipadSurround groupRef={cityRef} />
 
       {/* ── Galaxy sky sphere (Scenes 2 & 3) ── */}
       <GalaxySky groupRef={galaxyRef} />
@@ -619,8 +618,8 @@ function SceneContent() {
         <primitive object={car.scene} position={[0, 0, 0]} />
       </group>
 
-      {/* ── Avengers Tower – bigger scale, mid-ground position ── */}
-      <group ref={towerRef} position={[0, 0, -16]} scale={0.22}>
+      {/* ── Avengers Tower – prominent mid-ground ── */}
+      <group ref={towerRef} position={[0, 0, -16]} scale={0.38}>
         <primitive object={tower.scene} />
       </group>
 
@@ -673,7 +672,7 @@ useGLTF.preload('/iron_man-flying.glb')
 useGLTF.preload('/iron_man_last.glb')
 useGLTF.preload('/koenigsegg/scene.gltf')
 useGLTF.preload('/avengers_tower/scene.gltf')
-useGLTF.preload('/night_city/scene.gltf')
+useGLTF.preload('/sky_pano_-_l.a._helipad.glb')
 useGLTF.preload('/galaxy.glb')
 useGLTF.preload('/thanos.glb')
 
