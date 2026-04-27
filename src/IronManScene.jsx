@@ -7,174 +7,90 @@ import * as THREE from 'three'
 const lerp = THREE.MathUtils.lerp
 
 /* ─────────────────────────────────────────
-   City skyline – procedural buildings
+   Low-poly night city (Scene 1 background)
+   Sketchfab root matrix: scale≈5.54 + z→y-up.
+   At group scale=0.08 the skyline is ~15 units wide, ~6 units tall.
+   Positioned behind Iron Man (z=-12) with y=4 to bring base to ground.
 ───────────────────────────────────────── */
-const CITY_DATA = (() => {
-  /* deterministic xorshift32 so the layout is identical on every render */
-  let s = 0xc0ffee0
-  const rng = () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return (s >>> 0) / 0xffffffff }
-  return Array.from({ length: 55 }, (_, i) => {
-    const h = 0.6 + rng() * 7.0
-    return {
-      key : i,
-      w   : 0.25 + rng() * 1.2,
-      h,
-      d   : 0.25 + rng() * 0.9,
-      x   : (rng() - 0.5) * 28,
-      z   : -6   - rng() * 24,
-      ec  : rng() > 0.55 ? '#ffcc55' : rng() > 0.35 ? '#99bbff' : '#ffffff',
-      ei  : 0.03 + rng() * 0.10,
-    }
-  })
-})()
-
-function CityBackground({ groupRef }) {
+function NightCityModel({ groupRef }) {
+  const city = useGLTF('/night_city/scene.gltf')
+  useEffect(() => {
+    city.scene.traverse(c => {
+      if (!c.isMesh || !c.material) return
+      if (Array.isArray(c.material)) {
+        c.material = c.material.map(m => { const n = m.clone(); n.transparent = true; return n })
+      } else {
+        c.material = c.material.clone()
+        c.material.transparent = true
+      }
+    })
+  }, [city])
   return (
-    <group ref={groupRef}>
-      {/* Night sky backdrop */}
-      <mesh position={[0, 10, -42]}>
-        <planeGeometry args={[110, 40]} />
-        <meshBasicMaterial color="#020212" transparent />
-      </mesh>
-      {/* Buildings */}
-      {CITY_DATA.map(b => (
-        <mesh key={b.key} position={[b.x, b.h / 2, b.z]}>
-          <boxGeometry args={[b.w, b.h, b.d]} />
-          <meshStandardMaterial
-            color="#08081c"
-            emissive={b.ec}
-            emissiveIntensity={b.ei}
-            roughness={0.9}
-            transparent
-          />
-        </mesh>
-      ))}
-      {/* Ground */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, -16]}>
-        <planeGeometry args={[60, 55]} />
-        <meshStandardMaterial color="#060618" roughness={1} transparent />
-      </mesh>
-      {/* Atmospheric city-glow point lights */}
-      <pointLight position={[-3, 0.6, -6]}  color="#ff9922" intensity={0.7} distance={8}  decay={2} />
-      <pointLight position={[ 3, 0.6, -6]}  color="#ff9922" intensity={0.7} distance={8}  decay={2} />
-      <pointLight position={[ 0, 0.6, -12]} color="#4466cc" intensity={0.6} distance={10} decay={2} />
-      <pointLight position={[-5, 0.6, -15]} color="#ff9922" intensity={0.4} distance={8}  decay={2} />
-      <pointLight position={[ 5, 0.6, -15]} color="#ff9922" intensity={0.4} distance={8}  decay={2} />
+    <group ref={groupRef} position={[0, 4.0, -12]} scale={0.08}>
+      <primitive object={city.scene} />
     </group>
   )
 }
 
 /* ─────────────────────────────────────────
-   Starfield (used in Scenes 2 & 3)
+   Galaxy sky sphere (Scenes 2 & 3)
+   The raw mesh is a unit sphere with an emissive galaxy panorama texture.
+   Scaled up to 280 units so the camera is always inside.
 ───────────────────────────────────────── */
-const STAR_POSITIONS = (() => {
-  const a = new Float32Array(2000 * 3)
-  for (let i = 0; i < 2000; i++) {
-    const r  = 100 + Math.random() * 80
-    const th = Math.random() * Math.PI * 2
-    const ph = Math.acos(2 * Math.random() - 1)
-    a[i * 3]     = r * Math.sin(ph) * Math.cos(th)
-    a[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th)
-    a[i * 3 + 2] = r * Math.cos(ph)
-  }
-  return a
-})()
-
-function StarField({ visRef }) {
-  const ptsRef = useRef()
-  const matRef = useRef()
-  useFrame(() => {
-    if (!matRef.current || !ptsRef.current) return
-    const target = visRef.current ? 0.85 : 0
-    matRef.current.opacity = lerp(matRef.current.opacity, target, 0.05)
-    ptsRef.current.visible = matRef.current.opacity > 0.01
-  })
-  return (
-    <points ref={ptsRef} visible={false}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" array={STAR_POSITIONS} count={2000} itemSize={3} />
-      </bufferGeometry>
-      <pointsMaterial
-        ref={matRef}
-        color="#ddeeff"
-        size={0.18}
-        transparent
-        opacity={0}
-        sizeAttenuation
-        depthWrite={false}
-      />
-    </points>
-  )
-}
-
-/* ─────────────────────────────────────────
-   Rotating planet (used in Scenes 2 & 3)
-───────────────────────────────────────── */
-function Planet({ groupRef }) {
-  const meshRef = useRef()
-  useFrame((_, dt) => {
-    if (meshRef.current) meshRef.current.rotation.y += dt * 0.07
-  })
+function GalaxySky({ groupRef }) {
+  const galaxy = useGLTF('/galaxy.glb')
+  useEffect(() => {
+    galaxy.scene.traverse(c => {
+      if (!c.isMesh || !c.material) return
+      if (Array.isArray(c.material)) {
+        c.material = c.material.map(m => {
+          const n = m.clone()
+          n.side = THREE.DoubleSide
+          n.depthWrite = false
+          n.transparent = true
+          return n
+        })
+      } else {
+        const n = c.material.clone()
+        n.side = THREE.DoubleSide
+        n.depthWrite = false
+        n.transparent = true
+        c.material = n
+      }
+    })
+  }, [galaxy])
   return (
     <group ref={groupRef} visible={false}>
-      {/* Planet sphere */}
-      <mesh ref={meshRef}>
-        <sphereGeometry args={[2.2, 64, 64]} />
-        <meshStandardMaterial
-          color="#1a4888"
-          emissive="#071828"
-          emissiveIntensity={0.5}
-          roughness={0.65}
-          metalness={0.1}
-        />
-      </mesh>
-      {/* Atmosphere glow shell */}
-      <mesh>
-        <sphereGeometry args={[2.38, 32, 32]} />
-        <meshStandardMaterial
-          color="#4477ff"
-          transparent
-          opacity={0.13}
-          side={THREE.BackSide}
-          depthWrite={false}
-        />
-      </mesh>
-      {/* Rim light so Bloom picks up the atmosphere */}
-      <pointLight color="#2255dd" intensity={5} distance={16} decay={2} />
+      <primitive object={galaxy.scene} scale={280} />
     </group>
   )
 }
 
 /* ─────────────────────────────────────────
-   Flame cone (attached to a wrapper group)
+   Thanos (Scene 3)
+   After Sketchfab root transforms, Thanos is ~20 units tall in local space.
+   At scale=0.15 → ~3 units tall (larger than Iron Man for dramatic presence).
+   Placed at positive z (in front of Iron Man) so he's visible when camera
+   is behind Iron Man during the 360° orbit.
 ───────────────────────────────────────── */
-function Flame({ scale = 1, visRef }) {
-  const meshRef = useRef()
-  const matRef  = useRef()
-  useFrame(({ clock }) => {
-    if (!meshRef.current) return
-    const on = visRef.current
-    meshRef.current.visible = on
-    if (!on) return
-    const t = clock.getElapsedTime()
-    meshRef.current.scale.y = scale * (0.8 + Math.sin(t * 12) * 0.25)
-    meshRef.current.scale.x = scale * (0.5 + Math.sin(t * 9 + 1) * 0.15)
-    if (matRef.current) matRef.current.emissiveIntensity = 4 + Math.sin(t * 8) * 2
-  })
+function ThanosModel({ groupRef }) {
+  const thanos = useGLTF('/thanos.glb')
+  useEffect(() => {
+    thanos.scene.traverse(c => {
+      if (!c.isMesh || !c.material) return
+      if (Array.isArray(c.material)) {
+        c.material = c.material.map(m => { const n = m.clone(); n.transparent = true; return n })
+      } else {
+        c.material = c.material.clone()
+        c.material.transparent = true
+      }
+    })
+  }, [thanos])
   return (
-    <mesh ref={meshRef} rotation={[Math.PI, 0, 0]}>
-      <coneGeometry args={[0.08, 0.4, 8]} />
-      <meshStandardMaterial
-        ref={matRef}
-        emissive="#00ccff"
-        emissiveIntensity={5}
-        color="#001133"
-        transparent
-        opacity={0.85}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
-    </mesh>
+    <group ref={groupRef} visible={false}>
+      {/* rotation Y=π so Thanos faces toward Iron Man (negative z direction) */}
+      <primitive object={thanos.scene} scale={0.15} position={[0, 0, 0]} rotation={[0, Math.PI, 0]} />
+    </group>
   )
 }
 
@@ -230,30 +146,21 @@ function SceneContent() {
   const flyRef      = useRef()
   const shootRef    = useRef()
   const arcLightRef = useRef()
-  /* city props */
   const carRef      = useRef()
   const towerRef    = useRef()
   /* new environment refs */
   const cityRef     = useRef()
-  const starsVisRef = useRef(false)
-  const planetRef   = useRef()
+  const galaxyRef   = useRef()
+  const thanosRef   = useRef()
   const fogRef      = useRef()
 
-  const flamesVisRef = useRef(false)
-  const speedVisRef  = useRef(false)
+  const speedVisRef = useRef(false)
 
   /* models */
   const stand  = useGLTF('/iron_man.glb')
   const fly    = useGLTF('/iron_man-flying.glb')
   const shoot  = useGLTF('/iron_man_last.glb')
-  /* Koenigsegg One:1 – Sketchfab root matrix already applies 1/7 scale + z→y-up rotation.
-     After that transform the car is: ~2.4 wide, ~4.6 long (z), ~1.2 tall (y from -1.19..0).
-     We lift it by +1.19 via primitive position so wheels sit at world y=0. */
   const car    = useGLTF('/koenigsegg/scene.gltf')
-  /* Avengers Tower – Sketchfab root matrix applies z→y-up with no scale.
-     After that the tower extends from y=0 (top) down to y≈-59 (base).
-     We apply rotation [π,0,0] on the primitive to flip it upright (base y=0, top y≈59).
-     At group scale=0.1 the tower is ~5.9 units tall and ~1.5 wide. */
   const tower  = useGLTF('/avengers_tower/scene.gltf')
 
   /* prepare materials – clone + enable transparency */
@@ -298,20 +205,19 @@ function SceneContent() {
     const car3   = carRef.current
     const tower3 = towerRef.current
     const city3  = cityRef.current
-    const planet3 = planetRef.current
+    const galaxy3 = galaxyRef.current
+    const thanos3 = thanosRef.current
 
-    /* ── Update fog based on scene ──
-       City (t<0.42): near fog for atmosphere.
-       Space (t≥0.42): push fog very far so stars & planet are always visible. */
+    /* ── Dynamic fog: city haze in Act 1, deep-space in Acts 2 & 3 ── */
     if (fogRef.current) {
-      const spaceFactor = Math.min(1, Math.max(0, (t - 0.35) / 0.07))
-      fogRef.current.near = lerp(12, 200, spaceFactor)
-      fogRef.current.far  = lerp(55, 800, spaceFactor)
+      const sf = Math.min(1, Math.max(0, (t - 0.35) / 0.07))
+      fogRef.current.near = lerp(12, 200, sf)
+      fogRef.current.far  = lerp(55, 800, sf)
     }
 
     /* ════════════════════════════════════
        ACT 1  (0 → 0.35)
-       Standing model + Koenigsegg car + Avengers Tower + City skyline.
+       Standing model + Koenigsegg + Avengers Tower + Night City.
        Camera: wide establishing zoom-out → zoom to face → orbital sweep → behind.
     ════════════════════════════════════ */
     if (t < 0.35) {
@@ -321,15 +227,12 @@ function SceneContent() {
       if (car3)   car3.visible   = true
       if (tower3) tower3.visible = true
       if (city3)  city3.visible  = true
-      starsVisRef.current = false
-      if (planet3) planet3.visible = false
-      flamesVisRef.current = false
+      if (galaxy3) galaxy3.visible = false
+      if (thanos3) thanos3.visible = false
 
-      /* ── 0-5%: wide establishing shot – full city skyline reveal ── */
+      /* ── 0-5%: wide establishing shot – city skyline + Iron Man ── */
       if (t < 0.05) {
         const p = t / 0.05
-        /* Start far back so the whole city+Iron Man composition is visible,
-           then slowly drift forward (zoom-in feel) */
         camera.position.set(
           lerp(3.5,  2.0, p),
           lerp(3.8,  1.6, p),
@@ -339,12 +242,12 @@ function SceneContent() {
         fadeGroup(stand3, lerp(0, 1, p))
         fadeGroup(car3,   lerp(0, 1, p))
         fadeGroup(tower3, lerp(0, 0.6, p))
-        if (city3) fadeGroup(city3, lerp(0, 1, p))
+        fadeGroup(city3,  lerp(0, 1, p))
         if (stand3) stand3.position.y = 0
         speedVisRef.current = false
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(0.1, 1.5, p)
 
-      /* ── 5-7%: settle to standard shot, arc-light powers up ── */
+      /* ── 5-7%: settle to standard shot ── */
       } else if (t < 0.07) {
         const p = (t - 0.05) / 0.02
         camera.position.set(
@@ -372,7 +275,7 @@ function SceneContent() {
         speedVisRef.current = false
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2, 4, p)
 
-      /* ── 17-27%: sweep around the right side (past the Koenigsegg) ── */
+      /* ── 17-27%: sweep around the right side ── */
       } else if (t < 0.27) {
         const p = (t - 0.17) / 0.10
         camera.position.set(
@@ -388,14 +291,13 @@ function SceneContent() {
       /* ── 27-35%: camera sweeps behind; at ~30% Iron Man begins takeoff ── */
       } else {
         const p = (t - 0.27) / 0.08
-        /* Takeoff begins at p=0.375 (t≈0.30), reaches full TAKEOFF_Y at p=1 (t=0.35) */
+        /* Takeoff begins at p=0.375 (t≈0.30), reaches TAKEOFF_Y at p=1 (t=0.35) */
         const riseP  = Math.max(0, (p - 0.375) / 0.625)
-        const standY = TAKEOFF_Y * riseP * riseP           // ease-in acceleration
+        const standY = TAKEOFF_Y * riseP * riseP   // ease-in acceleration
 
         if (stand3) stand3.position.y = standY
         speedVisRef.current = riseP > 0.05
 
-        /* camera tracks upward with the rising model */
         camera.position.set(
           lerp(2.5,  0,    p),
           lerp(1.4,  1.55, p) + standY * 0.65,
@@ -408,20 +310,17 @@ function SceneContent() {
 
     /* ════════════════════════════════════
        TRANSITION 1 → 2  (35-42%)
-       Stand model continues rising & fades out.
-       Fly model fades in at the same altitude.
-       City fades out. Tower fades out. Stars & planet fade in.
+       Stand continues rising & fades out; fly fades in.
+       City/tower/car fade out; galaxy fades in.
     ════════════════════════════════════ */
     else if (t < 0.42) {
       const p = (t - 0.35) / 0.07
 
-      /* Stand model: continues rising and fades out */
       if (stand3) {
         stand3.visible    = true
         stand3.position.y = TAKEOFF_Y + lerp(0, 3.5, p)
         fadeGroup(stand3, lerp(1, 0, Math.min(1, p * 1.6)))
       }
-      /* Fly model: fades in near the takeoff altitude, then settles */
       if (fly3) {
         fly3.visible = true
         fly3.position.set(0, lerp(TAKEOFF_Y * 0.5, 0, p), 0)
@@ -430,26 +329,21 @@ function SceneContent() {
       }
       if (shoot3) shoot3.visible = false
 
-      /* City, car & tower all fade out as we leave the city */
       if (car3)   { car3.visible   = true; fadeGroup(car3,   lerp(1, 0, p)) }
       if (tower3) { tower3.visible = true; fadeGroup(tower3, lerp(0.7, 0, p)) }
       if (city3)  { city3.visible  = true; fadeGroup(city3,  lerp(1, 0, p)) }
 
-      /* Space environment fades in */
-      starsVisRef.current = true
-      if (planet3) {
-        planet3.visible = true
-        planet3.position.set(lerp(6, 5, p), lerp(6, 9, p), lerp(-20, -28, p))
-        fadeGroup(planet3, lerp(0, 1, p))
+      if (galaxy3) {
+        galaxy3.visible = true
+        fadeGroup(galaxy3, lerp(0, 1, p))
       }
+      if (thanos3) thanos3.visible = false
 
-      flamesVisRef.current = false
-      speedVisRef.current  = p < 0.5   // speed lines during first half of transition
+      speedVisRef.current = p < 0.5
 
-      /* Camera sweeps from behind to front at elevated altitude */
       const camAngle = lerp(Math.PI, 0, p)
       const radius   = lerp(2.8, 2.0, p)
-      const yOffset  = TAKEOFF_Y * lerp(0.8, 0, p)  // fade out altitude offset
+      const yOffset  = TAKEOFF_Y * lerp(0.8, 0, p)
       camera.position.set(
         Math.sin(camAngle) * radius * 0.55,
         lerp(1.55, 1.1, p) + yOffset,
@@ -461,8 +355,7 @@ function SceneContent() {
 
     /* ════════════════════════════════════
        ACT 2  (42-78%)
-       Flying model in space. Planet & stars visible.
-       Tower/city hidden. Camera frames the planet.
+       Flying model in space with galaxy background.
     ════════════════════════════════════ */
     else if (t < 0.78) {
       if (stand3) stand3.visible = false
@@ -471,63 +364,42 @@ function SceneContent() {
       if (car3)   car3.visible   = false
       if (tower3) tower3.visible = false
       if (city3)  city3.visible  = false
-      starsVisRef.current = true
-      if (planet3) {
-        planet3.visible = true
-        planet3.position.set(5, 9, -28)
-        fadeGroup(planet3, 1)
-      }
-      flamesVisRef.current = false
+      if (galaxy3) { galaxy3.visible = true; fadeGroup(galaxy3, 1) }
+      if (thanos3) thanos3.visible = false
 
-      /* Iron Man climbs from y=0 toward the planet (0 at 50%, peak at 78%) */
       const flyProgress = Math.max(0, (t - 0.50) / 0.28)
       const flyY = lerp(0, 4.8, flyProgress)
 
-      /* ── 42-50%: close shot on suit front; fly model descends from takeoff height to 0 ── */
+      /* ── 42-50%: close shot; fly model settles from takeoff height to 0 ── */
       if (t < 0.50) {
         speedVisRef.current = false
         const p = (t - 0.42) / 0.08
-        camera.position.set(
-          lerp(0.0, 0.0, p),
-          lerp(2.2, 1.0, p),
-          lerp(3.5, 1.3, p)
-        )
+        camera.position.set(0, lerp(2.2, 1.0, p), lerp(3.5, 1.3, p))
         camera.lookAt(0, lerp(2.0, 0.8, p), 0)
         if (fly3) { fly3.position.set(0, lerp(TAKEOFF_Y * 0.5, 0, p), 0); fly3.rotation.set(0, 0, 0) }
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2, 2.5, p)
 
-      /* ── 50-58%: pull back to reveal planet in background; Iron Man begins ascent ── */
+      /* ── 50-58%: pull back; Iron Man ascends ── */
       } else if (t < 0.58) {
         speedVisRef.current = true
         const p = (t - 0.50) / 0.08
-        camera.position.set(
-          lerp(0.0, -0.8, p),
-          lerp(1.0,  3.5, p),
-          lerp(1.3,  7.0, p)
-        )
+        camera.position.set(lerp(0, -0.8, p), lerp(1.0, 3.5, p), lerp(1.3, 7.0, p))
         camera.lookAt(0, lerp(0.8, flyY + 0.5, p), 0)
         if (fly3) { fly3.position.set(0, flyY, 0); fly3.rotation.set(0, 0, 0) }
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2.5, 2, p)
 
-      /* ── 58-70%: 360° barrel roll while climbing; camera orbits high ── */
+      /* ── 58-70%: 360° barrel roll while climbing ── */
       } else if (t < 0.70) {
         speedVisRef.current = false
         const p = (t - 0.58) / 0.12
-        if (fly3) {
-          fly3.position.set(0, flyY, 0)
-          fly3.rotation.set(0, p * Math.PI * 2, 0)
-        }
+        if (fly3) { fly3.position.set(0, flyY, 0); fly3.rotation.set(0, p * Math.PI * 2, 0) }
         const camAngle  = lerp(0.1, Math.PI * 0.65, p)
         const camRadius = lerp(6.0, 5.0, p)
-        camera.position.set(
-          Math.sin(camAngle) * camRadius,
-          lerp(3.5, flyY + 2.0, p),
-          Math.cos(camAngle) * camRadius
-        )
+        camera.position.set(Math.sin(camAngle) * camRadius, lerp(3.5, flyY + 2.0, p), Math.cos(camAngle) * camRadius)
         camera.lookAt(0, lerp(flyY * 0.5, flyY, p), 0)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2, 3, p)
 
-      /* ── 70-78%: final banking climb toward the planet ── */
+      /* ── 70-78%: final banking climb ── */
       } else {
         speedVisRef.current = true
         const p = (t - 0.70) / 0.08
@@ -540,11 +412,7 @@ function SceneContent() {
         camera.lookAt(0, lerp(flyY, flyY + 0.3, p), 0)
         if (fly3) {
           fly3.position.set(0, flyY, 0)
-          fly3.rotation.set(
-            lerp(0,    0.18, p),
-            Math.PI * 2,
-            lerp(0,   -0.35, p)
-          )
+          fly3.rotation.set(lerp(0, 0.18, p), Math.PI * 2, lerp(0, -0.35, p))
         }
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(3, 2.5, p)
       }
@@ -552,26 +420,20 @@ function SceneContent() {
 
     /* ════════════════════════════════════
        TRANSITION 2 → 3  (78-88%)
-       Dive close into the flying model, swap to shoot model.
-       Planet stays visible in space background.
+       Dive close, swap fly → shoot model. Galaxy stays. Thanos fades in.
     ════════════════════════════════════ */
     else if (t < 0.88) {
-      flamesVisRef.current = false
-      speedVisRef.current  = false
+      speedVisRef.current = false
       if (car3)   car3.visible   = false
       if (tower3) tower3.visible = false
       if (city3)  city3.visible  = false
-      starsVisRef.current = true
-      /* Planet stays put; reposition toward shooting direction over this window */
-      if (planet3) {
-        planet3.visible = true
-        const pp = (t - 0.78) / 0.10
-        planet3.position.set(
-          lerp(5,  1, pp),
-          lerp(9,  3.5, pp),
-          lerp(-28, -20, pp)
-        )
-        fadeGroup(planet3, 1)
+      if (galaxy3) { galaxy3.visible = true; fadeGroup(galaxy3, 1) }
+
+      /* Start fading Thanos in early so it's ready for the orbit */
+      if (thanos3) {
+        thanos3.visible = true
+        thanos3.position.set(0, 0.5, 12)
+        fadeGroup(thanos3, lerp(0, 1, (t - 0.78) / 0.10))
       }
 
       /* Phase A (78-83%): zoom into fly body */
@@ -589,7 +451,7 @@ function SceneContent() {
         camera.lookAt(0, 1.1, 0)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2.5, 4, p)
 
-      /* Phase B (83-85%): swap – fly fades out, shoot fades in */
+      /* Phase B (83-85%): swap fly → shoot */
       } else if (t < 0.85) {
         const p = (t - 0.83) / 0.02
         if (stand3) stand3.visible = false
@@ -603,7 +465,7 @@ function SceneContent() {
         camera.lookAt(0, 1.1, 0)
         if (arcLightRef.current) arcLightRef.current.intensity = 4
 
-      /* Phase C (85-88%): zoom out to reveal shoot model in space */
+      /* Phase C (85-88%): zoom out to reveal shoot model */
       } else {
         const p = (t - 0.85) / 0.03
         if (stand3) stand3.visible = false
@@ -621,8 +483,8 @@ function SceneContent() {
 
     /* ════════════════════════════════════
        ACT 3  (88-100%)
-       Shooting model – Iron Man charging toward the planet.
-       Planet is front-and-center in the shooting direction.
+       Shooting model heading toward Thanos.
+       Galaxy backdrop. Thanos at positive Z (visible from behind Iron Man).
     ════════════════════════════════════ */
     else {
       if (stand3) stand3.visible = false
@@ -631,29 +493,24 @@ function SceneContent() {
       if (car3)   car3.visible   = false
       if (tower3) tower3.visible = false
       if (city3)  city3.visible  = false
-      starsVisRef.current = true
-      flamesVisRef.current = false
-      speedVisRef.current  = false
+      if (galaxy3) { galaxy3.visible = true; fadeGroup(galaxy3, 1) }
+      speedVisRef.current = false
 
-      /* Planet is now directly ahead of Iron Man, slightly above – the target */
-      if (planet3) {
-        planet3.visible = true
-        planet3.position.set(0, 4.0, -20)
-        fadeGroup(planet3, 1)
+      /* Thanos fully visible at positive z in front of Iron Man */
+      if (thanos3) {
+        thanos3.visible = true
+        thanos3.position.set(0, 0.5, 12)
+        fadeGroup(thanos3, 1)
       }
 
-      /* ── 88-93%: drift in from front wide shot ── */
+      /* ── 88-93%: drift in from front ── */
       if (t < 0.93) {
         const p = (t - 0.88) / 0.05
-        camera.position.set(
-          lerp(0,   0.3, p),
-          lerp(1.5, 1.4, p),
-          lerp(5.0, 2.8, p)
-        )
+        camera.position.set(lerp(0, 0.3, p), lerp(1.5, 1.4, p), lerp(5.0, 2.8, p))
         camera.lookAt(0, 1.2, 0)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(3, 5, p)
 
-      /* ── 93-97%: full 360° orbit with rising camera; lands at front for finale ── */
+      /* ── 93-97%: full 360° orbit – Thanos visible from the back half ── */
       } else if (t < 0.97) {
         const p = (t - 0.93) / 0.04
         const angle  = lerp(0, Math.PI * 2, p)
@@ -666,16 +523,12 @@ function SceneContent() {
         camera.lookAt(0, 1.2, 0)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(5, 8, p)
 
-      /* ── 97-100%: straight zoom-in from the front – Iron Man + planet in frame ── */
+      /* ── 97-100%: straight zoom-in toward arc reactor ── */
       } else {
         const p  = (t - 0.97) / 0.03
-        const ep = p * p * (3 - 2 * p)  // ease-in-out
-        camera.position.set(
-          lerp(0,   0,   ep),
-          lerp(2.5, 1.3, ep),
-          lerp(3.5, 1.0, ep)
-        )
-        camera.lookAt(0, lerp(1.2, 1.2, ep), 0)
+        const ep = p * p * (3 - 2 * p)
+        camera.position.set(lerp(0, 0, ep), lerp(2.5, 1.3, ep), lerp(3.5, 1.0, ep))
+        camera.lookAt(0, 1.2, 0)
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(8, 12, ep)
       }
     }
@@ -700,36 +553,27 @@ function SceneContent() {
 
       <fog ref={fogRef} attach="fog" args={['#00000a', 12, 55]} />
 
-      {/* ── City skyline (Scene 1 only) ── */}
-      <CityBackground groupRef={cityRef} />
+      {/* ── Night city (Scene 1 only) ── */}
+      <NightCityModel groupRef={cityRef} />
 
-      {/* ── Starfield (Scenes 2 & 3) ── */}
-      <StarField visRef={starsVisRef} />
+      {/* ── Galaxy sky sphere (Scenes 2 & 3) ── */}
+      <GalaxySky groupRef={galaxyRef} />
 
-      {/* ── Rotating planet (Scenes 2 & 3) ── */}
-      <Planet groupRef={planetRef} />
+      {/* ── Thanos (Scene 3 – positive z, visible from behind Iron Man) ── */}
+      <ThanosModel groupRef={thanosRef} />
 
-      {/* ── Standing model ──
-          raw mesh ~2307 units tall → scale 0.001 → ~2.3 units */}
+      {/* ── Standing model ── */}
       <group ref={standRef} scale={modelScale}>
         <primitive object={stand.scene} scale={0.001} position={[0, 0, 0]} />
       </group>
 
-      {/* ── Koenigsegg One:1 ──
-          Sketchfab root matrix: scale≈0.143 + z-up→y-up.
-          Result: ~2.4 wide, ~4.6 long in z, wheels already at y≈0, roof at y≈1.19.
-          Positioned close to Iron Man's left side for a side-by-side reveal.
-          Angled slightly to face the camera for a heroic side-front reveal. */}
-      <group ref={carRef} position={[-1.7, 0, 0.5]} rotation={[0, -0.35, 0]} scale={modelScale}>
+      {/* ── Koenigsegg One:1 – slightly smaller (×0.88) ── */}
+      <group ref={carRef} position={[-1.7, 0, 0.5]} rotation={[0, -0.35, 0]} scale={modelScale * 0.88}>
         <primitive object={car.scene} position={[0, 0, 0]} />
       </group>
 
-      {/* ── Avengers Tower ──
-          Sketchfab root matrix: z-up→y-up, no extra scale.
-          After that transform: base at y=0, top at y≈59 (already upright – NO rotation needed).
-          group scale=0.1 → tower ~5.9 units tall, ~1.5 units wide.
-          Placed behind Iron Man so it looks like a distant skyscraper. */}
-      <group ref={towerRef} position={[0.5, 0, -25]} scale={0.1}>
+      {/* ── Avengers Tower – slightly bigger (scale 0.13) and pushed farther back ── */}
+      <group ref={towerRef} position={[0, 0, -28]} scale={0.13}>
         <primitive object={tower.scene} />
       </group>
 
@@ -738,7 +582,7 @@ function SceneContent() {
         <primitive object={fly.scene} position={[0, 0, 0]} />
       </group>
 
-      {/* ── Fighting model (slightly smaller than previous versions) ── */}
+      {/* ── Fighting / shooting model ── */}
       <group ref={shootRef} scale={modelScale} visible={false}>
         <primitive object={shoot.scene} scale={0.004} position={[0, 0, 0]} />
       </group>
@@ -782,6 +626,9 @@ useGLTF.preload('/iron_man-flying.glb')
 useGLTF.preload('/iron_man_last.glb')
 useGLTF.preload('/koenigsegg/scene.gltf')
 useGLTF.preload('/avengers_tower/scene.gltf')
+useGLTF.preload('/night_city/scene.gltf')
+useGLTF.preload('/galaxy.glb')
+useGLTF.preload('/thanos.glb')
 
 /* ─── Root ─── */
 export default function IronManScene() {
@@ -811,7 +658,7 @@ export default function IronManScene() {
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.2,
         }}
-        camera={{ fov: 50, near: 0.05, far: 300 }}
+        camera={{ fov: 50, near: 0.05, far: 400 }}
         dpr={[1, Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2)]}
         style={{ background: '#000008', width: '100%', height: '100%' }}
       >
@@ -826,7 +673,6 @@ export default function IronManScene() {
           <Environment preset="night" />
         </Suspense>
         <EffectComposer>
-          {/* Reduced intensity + higher threshold to eliminate the whitish bloom haze */}
           <Bloom luminanceThreshold={0.28} luminanceSmoothing={0.9} intensity={0.9} mipmapBlur />
           <Vignette eskil={false} offset={0.1} darkness={0.65} />
         </EffectComposer>
@@ -834,3 +680,4 @@ export default function IronManScene() {
     </div>
   )
 }
+
