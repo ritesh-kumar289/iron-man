@@ -474,22 +474,21 @@ function SceneContent() {
       </group>
 
       {/* ── Koenigsegg One:1 ──
-          Sketchfab root matrix: scale≈0.143 + z-up→y-up rotation.
-          Result: ~2.4 wide, ~4.6 long in z, roof at y=0, wheels at y≈-1.19.
-          Positioned to the left of Iron Man; y-offset lifts wheels to ground level.
+          Sketchfab root matrix: scale≈0.143 + z-up→y-up.
+          Result: ~2.4 wide, ~4.6 long in z, wheels already at y≈0, roof at y≈1.19.
+          Positioned close to Iron Man's left side for a side-by-side reveal.
           Angled slightly to face the camera for a heroic side-front reveal. */}
-      <group ref={carRef} position={[-2.6, 0, 0.4]} rotation={[0, -0.35, 0]} scale={modelScale}>
-        <primitive object={car.scene} position={[0, 1.19, 0]} />
+      <group ref={carRef} position={[-1.7, 0, 0.5]} rotation={[0, -0.35, 0]} scale={modelScale}>
+        <primitive object={car.scene} position={[0, 0, 0]} />
       </group>
 
       {/* ── Avengers Tower ──
-          Sketchfab root matrix: z-up→y-up, no extra scale → tower hangs y=0..−59.
-          rotation={[π,0,0]} flips it upright: base at y=0, top at y≈59.
-          group scale=0.1 → tower ~5.9 units tall, ~1.5 wide.
-          Placed center-back so it's framed between Iron Man in scene 1
-          and acts as the flight target for scene 2. */}
-      <group ref={towerRef} position={[0.5, -0.5, -25]} scale={0.1}>
-        <primitive object={tower.scene} rotation={[Math.PI, 0, 0]} />
+          Sketchfab root matrix: z-up→y-up, no extra scale.
+          After that transform: base at y=0, top at y≈59 (already upright – NO rotation needed).
+          group scale=0.1 → tower ~5.9 units tall, ~1.5 units wide.
+          Placed behind Iron Man so it looks like a distant skyscraper. */}
+      <group ref={towerRef} position={[0.5, 0, -25]} scale={0.1}>
+        <primitive object={tower.scene} />
       </group>
 
       {/* ── Flying model ── */}
