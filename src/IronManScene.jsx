@@ -11,18 +11,18 @@ const lerp = THREE.MathUtils.lerp
    Model bounding box (local): X(-21.7..13.6) Y(-25.8..5.3) Z(-9.1..5.7)
 
    Goal: Iron Man + car stand on a dark ground plane in the foreground.
-   The city model acts as a DISTANT BACKDROP — buildings visible behind them
-   as a compact night skyline, never surrounding the characters.
+   The city model acts as a DISTANT BACKDROP — a compact skyline visible only
+   straight behind the characters, never on their sides.
 
-   Scale=0.6 keeps the entire city width to ~21 world units (X: -11 to +10).
-   Combined with position z=-22 the nearest city edge sits at world z≈-18.6
-   and the far end at z≈-27.5 — always behind Iron Man (world z=0).
-   From the opening camera at z=14 the skyline subtends ~18° horizontally,
-   matching the reference "parking-lot platform with city backdrop" look.
+   The camera's horizontal FOV is ~107° (75° vFOV × 16:9), so the half-FOV
+   is ±53.5°.  At scale=0.3, the city's world X range shrinks to ±5.3 units
+   (centred at 0).  From the side-sweep camera (x=2.5, z=0.3 looking at Iron
+   Man), the city centre is ~80° off the camera's forward axis — outside the
+   ±53.5° FOV — so it never appears as a side wall.  From any front-facing
+   camera position the city spans only ±12° horizontally: a tight backdrop.
 
-   X centering: model X-centre = (-21.7+13.6)/2 = -4.05
-     offset to centre at world 0: -(-4.05 × 0.6) = +2.43 → position X = 2.5
-   Building tops: 5.3 × 0.6 = 3.18 world Y — proper skyline silhouette.
+   X centering: model X-centre = -4.05 local → +4.05×0.3 = +1.22 ≈ 1.2 posX
+   Z: city front at -20+5.7×0.3=-18.3 world — always behind Iron Man (z=0).
 ───────────────────────────────────────── */
 function NightCityEnv({ groupRef }) {
   const city = useGLTF('/night_city/scene.gltf')
@@ -41,8 +41,8 @@ function NightCityEnv({ groupRef }) {
   }, [city])
   return (
     <group ref={groupRef}>
-      {/* Distant city backdrop — buildings are behind Iron Man in -Z direction */}
-      <primitive object={city.scene} scale={0.6} position={[2.5, 0, -22]} />
+      {/* City as a compact distant backdrop — never on the sides of Iron Man */}
+      <primitive object={city.scene} scale={0.3} position={[1.2, 0, -20]} />
       {/* Dark ground plane that extends from the characters to the city */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
         <planeGeometry args={[400, 400]} />
@@ -143,7 +143,7 @@ function SpeedLines({ visRef }) {
     pos.needsUpdate = true
   })
   return (
-    <points ref={pointsRef}>
+    <points ref={pointsRef} visible={false}>
       <bufferGeometry ref={geoRef}>
         <bufferAttribute attach="attributes-position" array={SL_POS} count={SL_COUNT} itemSize={3} />
       </bufferGeometry>
@@ -309,7 +309,7 @@ function SceneContent() {
         const standY = TAKEOFF_Y * riseP * riseP   // ease-in acceleration
 
         if (stand3) stand3.position.y = standY
-        speedVisRef.current = riseP > 0.05
+        speedVisRef.current = false  // no speed-lines during Act 1 takeoff
 
         camera.position.set(
           lerp(2.5,  0,    p),
