@@ -8,12 +8,19 @@ const lerp = THREE.MathUtils.lerp
 
 /* ─────────────────────────────────────────
    Low-poly night city environment (Scene 1 / Act 1)
-   Iron Man stands in the middle of a sprawling night city.
-   The model is centered on Iron Man and scaled so the camera is
-   always inside the city boundary (scale=2.5 puts the far edge
-   at ~14 world units, matching the widest Act-1 camera position).
-   Materials keep their original emissive city-light look; we only
-   add transparent=true so the group can fade in/out smoothly.
+   Model bounding box (local): X(-21.7..13.6) Y(-25.8..5.3) Z(-9.1..5.7)
+   The model's Z-positive end is the open platform/road area; the
+   Z-negative end is where the buildings stand.
+
+   Goal: Iron Man + car stand on the road/platform in the foreground
+   while the city skyline sits behind them as a backdrop.
+
+   At scale=1.5 with position z=-6:
+     - Platform front (model Z=+5.7):  -6 + 5.7*1.5 =  +2.55  →  slightly in front of Iron Man
+     - Buildings rear  (model Z=-9.1): -6 - 9.1*1.5 = -19.65  →  skyline behind Iron Man
+
+   X centering (model X centre = -4.05):  -4.05 * 1.5 = -6.1  → position X = +6
+   Y: model road surface ≈ Y=0 in local space → stays at world Y=0.
 ───────────────────────────────────────── */
 function NightCityEnv({ groupRef }) {
   const city = useGLTF('/night_city/scene.gltf')
@@ -32,14 +39,9 @@ function NightCityEnv({ groupRef }) {
   }, [city])
   return (
     <group ref={groupRef}>
-      {/*
-        Model bounding box: X(-21.7..13.6) Y(-25.8..5.3) Z(-9.1..5.7).
-        Centering offset at scale=2.5: x = 4.05*2.5 ≈ 10, z = 1.7*2.5 ≈ 4.
-        This places the city's geometric centre at world origin so Iron Man
-        is surrounded by buildings on all sides.
-      */}
-      <primitive object={city.scene} scale={2.5} position={[10, 0, 4]} />
-      {/* Dark ground plane fills the area outside the city footprint */}
+      {/* Platform in foreground, buildings as backdrop behind Iron Man */}
+      <primitive object={city.scene} scale={1.5} position={[6, 0, -6]} />
+      {/* Dark ground plane fills any gap outside the city footprint */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
         <planeGeometry args={[400, 400]} />
         <meshStandardMaterial color="#020209" roughness={1} />
