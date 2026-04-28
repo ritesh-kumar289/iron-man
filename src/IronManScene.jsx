@@ -9,18 +9,20 @@ const lerp = THREE.MathUtils.lerp
 /* ─────────────────────────────────────────
    Low-poly night city environment (Scene 1 / Act 1)
    Model bounding box (local): X(-21.7..13.6) Y(-25.8..5.3) Z(-9.1..5.7)
-   The model's Z-positive end is the open platform/road area; the
-   Z-negative end is where the buildings stand.
 
-   Goal: Iron Man + car stand on the road/platform in the foreground
-   while the city skyline sits behind them as a backdrop.
+   Goal: Iron Man + car stand on a dark ground plane in the foreground.
+   The city model acts as a DISTANT BACKDROP — buildings visible behind them
+   as a compact night skyline, never surrounding the characters.
 
-   At scale=1.5 with position z=-6:
-     - Platform front (model Z=+5.7):  -6 + 5.7*1.5 =  +2.55  →  slightly in front of Iron Man
-     - Buildings rear  (model Z=-9.1): -6 - 9.1*1.5 = -19.65  →  skyline behind Iron Man
+   Scale=0.6 keeps the entire city width to ~21 world units (X: -11 to +10).
+   Combined with position z=-22 the nearest city edge sits at world z≈-18.6
+   and the far end at z≈-27.5 — always behind Iron Man (world z=0).
+   From the opening camera at z=14 the skyline subtends ~18° horizontally,
+   matching the reference "parking-lot platform with city backdrop" look.
 
-   X centering (model X centre = -4.05):  -4.05 * 1.5 = -6.1  → position X = +6
-   Y: model road surface ≈ Y=0 in local space → stays at world Y=0.
+   X centering: model X-centre = (-21.7+13.6)/2 = -4.05
+     offset to centre at world 0: -(-4.05 × 0.6) = +2.43 → position X = 2.5
+   Building tops: 5.3 × 0.6 = 3.18 world Y — proper skyline silhouette.
 ───────────────────────────────────────── */
 function NightCityEnv({ groupRef }) {
   const city = useGLTF('/night_city/scene.gltf')
@@ -39,9 +41,9 @@ function NightCityEnv({ groupRef }) {
   }, [city])
   return (
     <group ref={groupRef}>
-      {/* Platform in foreground, buildings as backdrop behind Iron Man */}
-      <primitive object={city.scene} scale={1.5} position={[6, 0, -6]} />
-      {/* Dark ground plane fills any gap outside the city footprint */}
+      {/* Distant city backdrop — buildings are behind Iron Man in -Z direction */}
+      <primitive object={city.scene} scale={0.6} position={[2.5, 0, -22]} />
+      {/* Dark ground plane that extends from the characters to the city */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
         <planeGeometry args={[400, 400]} />
         <meshStandardMaterial color="#020209" roughness={1} />
