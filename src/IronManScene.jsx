@@ -10,25 +10,29 @@ const lerp = THREE.MathUtils.lerp
    Low-poly night city environment (Scene 1 / Act 1)
    Model bounding box (local): X(-21.7..13.6) Y(-25.8..5.3) Z(-9.1..5.7)
 
-   Goal: Iron Man + car stand on a dark ground plane in the foreground.
-   The city model acts as a DISTANT BACKDROP — a compact skyline visible only
-   straight behind the characters, never on their sides.
+   Canvas fov=50° → horizontal half-FOV = ±39.6°.
 
-   The camera's horizontal FOV is ~107° (75° vFOV × 16:9), so the half-FOV
-   is ±53.5°.  At scale=0.3, the city's world X range shrinks to ±5.3 units
-   (centred at 0).  From the side-sweep camera (x=2.5, z=0.3 looking at Iron
-   Man), the city centre is ~80° off the camera's forward axis — outside the
-   ±53.5° FOV — so it never appears as a side wall.  From any front-facing
-   camera position the city spans only ±12° horizontally: a tight backdrop.
+   Non-uniform scale [0.3, 1.2, 0.3]:
+     X world width:  35.3 × 0.3 = 10.6  → centred at x=1.2 → ±5.3 world X
+     Y building tops: 5.3 × 1.2 - 1.5 pos-y = 4.86 world — tall skyline
+     Z depth:        14.8 × 0.3 = 4.44 world (shallow)
 
-   X centering: model X-centre = -4.05 local → +4.05×0.3 = +1.22 ≈ 1.2 posX
-   Z: city front at -20+5.7×0.3=-18.3 world — always behind Iron Man (z=0).
+   Position [1.2, -1.5, -35]:
+     From the side-sweep camera (x=2.5, z=0.3 looking at 0,1.4,0) the city's
+     left edge is 71° off-axis and the right edge is 88° off-axis — both well
+     outside the ±39.6° half-FOV → city is invisible from the side camera.
+     From front cameras the city spans only ±8° horizontally: a tight backdrop
+     visible only straight behind Iron Man.
+
+   renderOrder = 0 on all city meshes ensures characters (renderOrder = 10)
+   always paint over city pixels — eliminates any see-through artefacts.
 ───────────────────────────────────────── */
 function NightCityEnv({ groupRef }) {
   const city = useGLTF('/night_city/scene.gltf')
   useEffect(() => {
     city.scene.traverse(c => {
       if (!c.isMesh || !c.material) return
+      c.renderOrder = 0   // city always draws before characters (renderOrder=10)
       const mats = Array.isArray(c.material) ? c.material : [c.material]
       mats.forEach(m => {
         m.transparent = true   // required for fadeGroup opacity transitions
@@ -41,8 +45,8 @@ function NightCityEnv({ groupRef }) {
   }, [city])
   return (
     <group ref={groupRef}>
-      {/* City as a compact distant backdrop — never on the sides of Iron Man */}
-      <primitive object={city.scene} scale={0.3} position={[1.2, 0, -20]} />
+      {/* Non-uniform scale: narrow X/Z footprint, tall Y — distant skyline backdrop */}
+      <primitive object={city.scene} scale={[0.3, 1.2, 0.3]} position={[1.2, -1.5, -35]} />
       {/* Dark ground plane that extends from the characters to the city */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
         <planeGeometry args={[400, 400]} />
@@ -181,16 +185,23 @@ function SceneContent() {
   const shoot  = useGLTF('/iron_man_last.glb')
   const car    = useGLTF('/koenigsegg/scene.gltf')
 
-  /* prepare materials – clone + enable transparency */
+  /* prepare materials – clone + enable transparency, lock depth for solid rendering */
   useEffect(() => {
     const fix = (model) => {
       model.scene.traverse(c => {
         if (!c.isMesh || !c.material) return
+        c.renderOrder = 10  // render characters after city (renderOrder=0) — no see-through
         if (Array.isArray(c.material)) {
-          c.material = c.material.map(m => { const n = m.clone(); n.transparent = true; return n })
+          c.material = c.material.map(m => {
+            const n = m.clone()
+            n.transparent = true
+            n.depthWrite  = true   // always write to depth buffer — prevents see-through
+            return n
+          })
         } else {
           c.material = c.material.clone()
           c.material.transparent = true
+          c.material.depthWrite  = true
         }
       })
     }
@@ -335,10 +346,14 @@ function SceneContent() {
         fadeGroup(stand3, lerp(1, 0, Math.min(1, p * 1.6)))
       }
       if (fly3) {
-        fly3.visible = true
-        fly3.position.set(0, lerp(TAKEOFF_Y * 0.5, 0, p), 0)
-        fly3.rotation.set(0, 0, 0)
-        fadeGroup(fly3, lerp(0, 1, p))
+        // Only reveal flying model after stand has fully faded (stand reaches 0 at p=0.625)
+        const flyP = Math.max(0, (p - 0.65) / 0.35)
+        fly3.visible = flyP > 0
+        if (flyP > 0) {
+          fly3.position.set(0, lerp(TAKEOFF_Y * 0.5, 0, flyP), 0)
+          fly3.rotation.set(0, 0, 0)
+          fadeGroup(fly3, flyP)
+        }
       }
       if (shoot3) shoot3.visible = false
 
@@ -354,7 +369,7 @@ function SceneContent() {
       speedVisRef.current = p < 0.5
 
       const camAngle = lerp(Math.PI, 0, p)
-      const radius   = lerp(2.8, 2.0, p)
+      const radius   = lerp(2.8, 3.5, p)   // end at z=3.5 (was 2.0) — fly model not zoomed-in
       const yOffset  = TAKEOFF_Y * lerp(0.8, 0, p)
       camera.position.set(
         Math.sin(camAngle) * radius * 0.55,
@@ -381,20 +396,20 @@ function SceneContent() {
       const flyProgress = Math.max(0, (t - 0.50) / 0.28)
       const flyY = lerp(0, 4.8, flyProgress)
 
-      /* ── 42-50%: zoomed-out entry; fly model settles from takeoff height to 0 ── */
+      /* ── 42-50%: smooth pull-back from transition end (z=3.5) — fly model zooms out ── */
       if (t < 0.50) {
         speedVisRef.current = false
         const p = (t - 0.42) / 0.08
-        camera.position.set(0, lerp(3.5, 1.8, p), lerp(6.5, 2.8, p))
-        camera.lookAt(0, lerp(2.5, 0.8, p), 0)
-        if (fly3) { fly3.position.set(0, lerp(TAKEOFF_Y * 0.5, 0, p), 0); fly3.rotation.set(0, 0, 0) }
+        camera.position.set(0, lerp(1.4, 1.8, p), lerp(3.5, 5.5, p))
+        camera.lookAt(0, lerp(1.0, 0.8, p), 0)
+        if (fly3) { fly3.position.set(0, lerp(0.3, 0, p), 0); fly3.rotation.set(0, 0, 0) }
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2, 2.5, p)
 
       /* ── 50-58%: pull back; Iron Man ascends ── */
       } else if (t < 0.58) {
         speedVisRef.current = true
         const p = (t - 0.50) / 0.08
-        camera.position.set(lerp(0, -0.8, p), lerp(1.0, 3.5, p), lerp(1.3, 7.0, p))
+        camera.position.set(lerp(0, -0.8, p), lerp(1.8, 3.5, p), lerp(5.5, 7.0, p))
         camera.lookAt(0, lerp(0.8, flyY + 0.5, p), 0)
         if (fly3) { fly3.position.set(0, flyY, 0); fly3.rotation.set(0, 0, 0) }
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2.5, 2, p)
@@ -568,7 +583,7 @@ function SceneContent() {
       {/* Dedicated Thanos illumination */}
       <pointLight position={[0, 5, 12]}  color="#ff7744" intensity={5} distance={25} decay={2} />
 
-      <fog ref={fogRef} attach="fog" args={['#00000a', 18, 80]} />
+      <fog ref={fogRef} attach="fog" args={['#00000a', 25, 120]} />
 
       {/* ── Low-poly night city (Scene 1 only) ── */}
       <NightCityEnv groupRef={cityRef} />
