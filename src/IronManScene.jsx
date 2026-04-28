@@ -7,38 +7,42 @@ import * as THREE from 'three'
 const lerp = THREE.MathUtils.lerp
 
 /* ─────────────────────────────────────────
-   LA Helipad sky sphere (Scene 1 / Act 1)
-   The GLB is a panoramic sphere (same kind as galaxy.glb).
-   We replace every mesh's material with a lighting-independent
-   MeshBasicMaterial so the sky texture is always visible regardless
-   of ambient/directional lighting, fog, or depth-buffer state.
-   renderOrder=-10 ensures the sky draws first (background), and
-   depthTest=false means it never gets clipped by foreground geometry.
+   Low-poly night city environment (Scene 1 / Act 1)
+   Iron Man stands in the middle of a sprawling night city.
+   The model is centered on Iron Man and scaled so the camera is
+   always inside the city boundary (scale=2.5 puts the far edge
+   at ~14 world units, matching the widest Act-1 camera position).
+   Materials keep their original emissive city-light look; we only
+   add transparent=true so the group can fade in/out smoothly.
 ───────────────────────────────────────── */
-function HelipadSky({ groupRef }) {
-  const helipad = useGLTF('/sky_pano_-_l.a._helipad.glb')
+function NightCityEnv({ groupRef }) {
+  const city = useGLTF('/night_city/scene.gltf')
   useEffect(() => {
-    helipad.scene.traverse(c => {
+    city.scene.traverse(c => {
       if (!c.isMesh || !c.material) return
       const mats = Array.isArray(c.material) ? c.material : [c.material]
-      c.material = mats.map(m => new THREE.MeshBasicMaterial({
-        map:          m.map          || m.emissiveMap || null,
-        side:         THREE.BackSide,   // camera is inside the sphere
-        depthWrite:   false,
-        depthTest:    false,            // always draw behind everything
-        fog:          false,
-      }))
-      if (c.material.length === 1) c.material = c.material[0]
-      c.renderOrder = -10              // render before all other objects
+      mats.forEach(m => {
+        m.transparent = true   // required for fadeGroup opacity transitions
+        // Boost emissive city lights so they glow under dark ambient lighting
+        if (m.emissiveMap || (m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0)) {
+          m.emissiveIntensity = Math.max(m.emissiveIntensity ?? 1, 2)
+        }
+      })
     })
-  }, [helipad])
+  }, [city])
   return (
     <group ref={groupRef}>
-      <primitive object={helipad.scene} scale={300} />
-      {/* Ground plane lives here so it is hidden with the city in later scenes */}
+      {/*
+        Model bounding box: X(-21.7..13.6) Y(-25.8..5.3) Z(-9.1..5.7).
+        Centering offset at scale=2.5: x = 4.05*2.5 ≈ 10, z = 1.7*2.5 ≈ 4.
+        This places the city's geometric centre at world origin so Iron Man
+        is surrounded by buildings on all sides.
+      */}
+      <primitive object={city.scene} scale={2.5} position={[10, 0, 4]} />
+      {/* Dark ground plane fills the area outside the city footprint */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-        <planeGeometry args={[200, 200]} />
-        <meshStandardMaterial color="#030310" roughness={1} />
+        <planeGeometry args={[400, 400]} />
+        <meshStandardMaterial color="#020209" roughness={1} />
       </mesh>
     </group>
   )
@@ -562,8 +566,8 @@ function SceneContent() {
 
       <fog ref={fogRef} attach="fog" args={['#00000a', 18, 80]} />
 
-      {/* ── LA Helipad sky sphere (Scene 1 only) ── */}
-      <HelipadSky groupRef={cityRef} />
+      {/* ── Low-poly night city (Scene 1 only) ── */}
+      <NightCityEnv groupRef={cityRef} />
 
       {/* ── Galaxy sky sphere (Scenes 2 & 3) ── */}
       <GalaxySky groupRef={galaxyRef} />
@@ -629,7 +633,7 @@ useGLTF.preload('/iron_man.glb')
 useGLTF.preload('/iron_man-flying.glb')
 useGLTF.preload('/iron_man_last.glb')
 useGLTF.preload('/koenigsegg/scene.gltf')
-useGLTF.preload('/sky_pano_-_l.a._helipad.glb')
+useGLTF.preload('/night_city/scene.gltf')
 useGLTF.preload('/galaxy.glb')
 useGLTF.preload('/thanos.glb')
 
