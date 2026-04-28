@@ -10,8 +10,8 @@ const lerp = THREE.MathUtils.lerp
    LA Helipad sky sphere (Scene 1 / Act 1)
    The GLB is a panoramic sphere (same kind as galaxy.glb).
    Scaled up to 320 units so the camera always sits inside it.
-   The helipad landing pad is on the top of the sphere interior,
-   giving the impression of standing on a rooftop helipad.
+   fog is disabled on the materials so the far-away sphere surface
+   is not clipped by the Act-1 city fog.
 ───────────────────────────────────────── */
 function HelipadSky({ groupRef }) {
   const helipad = useGLTF('/sky_pano_-_l.a._helipad.glb')
@@ -24,6 +24,7 @@ function HelipadSky({ groupRef }) {
           n.side = THREE.DoubleSide
           n.depthWrite = false
           n.transparent = true
+          n.fog = false          // prevent city fog from hiding the sphere
           return n
         })
       } else {
@@ -31,6 +32,7 @@ function HelipadSky({ groupRef }) {
         n.side = THREE.DoubleSide
         n.depthWrite = false
         n.transparent = true
+        n.fog = false            // prevent city fog from hiding the sphere
         c.material = n
       }
     })
@@ -38,6 +40,11 @@ function HelipadSky({ groupRef }) {
   return (
     <group ref={groupRef}>
       <primitive object={helipad.scene} scale={320} />
+      {/* Ground plane lives here so it is hidden with the city in later scenes */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
+        <planeGeometry args={[200, 200]} />
+        <meshStandardMaterial color="#030310" roughness={1} />
+      </mesh>
     </group>
   )
 }
@@ -530,9 +537,9 @@ function SceneContent() {
         /* fade Iron Man out quickly so he doesn't block the zoom path */
         fadeGroup(shoot3, lerp(1, 0, Math.min(1, p * 4)))
         /* camera flies from behind Iron Man (z=-3.5) toward Thanos (z=12) */
-        camera.position.set(lerp(0, 0.2, ep), lerp(2.5, 2.2, ep), lerp(-3.5, 10.0, ep))
-        /* look target tracks to Thanos face (y≈1.8 at scale=0.15) */
-        camera.lookAt(lerp(0, 0, ep), lerp(1.2, 1.8, ep), lerp(0, 12, ep))
+        camera.position.set(lerp(0, 0.2, ep), lerp(2.5, 3.8, ep), lerp(-3.5, 9.5, ep))
+        /* look target tracks to Thanos face (y≈3.3 at scale=0.15, group y=0.5) */
+        camera.lookAt(lerp(0, 0, ep), lerp(1.2, 3.3, ep), lerp(0, 12, ep))
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(8, 14, ep)
       }
     }
@@ -559,12 +566,6 @@ function SceneContent() {
       <pointLight position={[0, 5, 12]}  color="#ff7744" intensity={5} distance={25} decay={2} />
 
       <fog ref={fogRef} attach="fog" args={['#00000a', 18, 80]} />
-
-      {/* ── Dark ground plane ── */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-        <planeGeometry args={[200, 200]} />
-        <meshStandardMaterial color="#030310" roughness={1} />
-      </mesh>
 
       {/* ── LA Helipad sky sphere (Scene 1 only) ── */}
       <HelipadSky groupRef={cityRef} />
