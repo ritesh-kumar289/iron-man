@@ -9,37 +9,32 @@ const lerp = THREE.MathUtils.lerp
 /* ─────────────────────────────────────────
    LA Helipad sky sphere (Scene 1 / Act 1)
    The GLB is a panoramic sphere (same kind as galaxy.glb).
-   Scaled up to 320 units so the camera always sits inside it.
-   fog is disabled on the materials so the far-away sphere surface
-   is not clipped by the Act-1 city fog.
+   We replace every mesh's material with a lighting-independent
+   MeshBasicMaterial so the sky texture is always visible regardless
+   of ambient/directional lighting, fog, or depth-buffer state.
+   renderOrder=-10 ensures the sky draws first (background), and
+   depthTest=false means it never gets clipped by foreground geometry.
 ───────────────────────────────────────── */
 function HelipadSky({ groupRef }) {
   const helipad = useGLTF('/sky_pano_-_l.a._helipad.glb')
   useEffect(() => {
     helipad.scene.traverse(c => {
       if (!c.isMesh || !c.material) return
-      if (Array.isArray(c.material)) {
-        c.material = c.material.map(m => {
-          const n = m.clone()
-          n.side = THREE.DoubleSide
-          n.depthWrite = false
-          n.transparent = true
-          n.fog = false          // prevent city fog from hiding the sphere
-          return n
-        })
-      } else {
-        const n = c.material.clone()
-        n.side = THREE.DoubleSide
-        n.depthWrite = false
-        n.transparent = true
-        n.fog = false            // prevent city fog from hiding the sphere
-        c.material = n
-      }
+      const mats = Array.isArray(c.material) ? c.material : [c.material]
+      c.material = mats.map(m => new THREE.MeshBasicMaterial({
+        map:          m.map          || m.emissiveMap || null,
+        side:         THREE.BackSide,   // camera is inside the sphere
+        depthWrite:   false,
+        depthTest:    false,            // always draw behind everything
+        fog:          false,
+      }))
+      if (c.material.length === 1) c.material = c.material[0]
+      c.renderOrder = -10              // render before all other objects
     })
   }, [helipad])
   return (
     <group ref={groupRef}>
-      <primitive object={helipad.scene} scale={320} />
+      <primitive object={helipad.scene} scale={300} />
       {/* Ground plane lives here so it is hidden with the city in later scenes */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
         <planeGeometry args={[200, 200]} />
