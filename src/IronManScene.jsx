@@ -1,10 +1,12 @@
-import { useRef, useEffect, Suspense, useState } from 'react'
+import { useRef, useEffect, Suspense, useState, useMemo } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useGLTF, useScroll, ScrollControls, Environment, Preload } from '@react-three/drei'
-import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing'
+import { EffectComposer, Bloom, Vignette, ChromaticAberration } from '@react-three/postprocessing'
 import * as THREE from 'three'
 
 const lerp = THREE.MathUtils.lerp
+/* Smooth-start + smooth-stop easing (C1 continuous at 0 and 1) */
+const smootherstep = (x) => { const t = Math.max(0, Math.min(1, x)); return t * t * t * (t * (t * 6 - 15) + 10) }
 
 /* ─────────────────────────────────────────
    Module-level drag state (mutated each frame / on pointer events;
@@ -275,21 +277,28 @@ function SceneContent() {
       if (galaxy3) galaxy3.visible = false
       if (thanos3) thanos3.visible = false
 
-      /* ── Smooth car toward drag target (mouse-drag interactivity) ── */
+      /* ── Car position: slide in from off-screen left during first 5%, then follow drag ── */
       if (car3) {
-        car3.position.x = lerp(car3.position.x, dragState.targetX, 0.1)
-        car3.position.z = lerp(car3.position.z, dragState.targetZ, 0.1)
+        if (t < 0.05) {
+          const ep = smootherstep(t / 0.05)
+          car3.position.x = lerp(-7, dragState.targetX, ep)
+          car3.position.z = dragState.targetZ
+        } else {
+          car3.position.x = lerp(car3.position.x, dragState.targetX, 0.1)
+          car3.position.z = lerp(car3.position.z, dragState.targetZ, 0.1)
+        }
       }
 
       /* ── 0-5%: wide establishing shot – city skyline + Iron Man ── */
       if (t < 0.05) {
-        const p = t / 0.05
+        const p  = t / 0.05
+        const ep = smootherstep(p)
         camera.position.set(
-          lerp(3.5,  2.0, p),
-          lerp(3.8,  1.6, p),
-          lerp(14.0, 7.5, p)
+          lerp(3.5,  2.0, ep),
+          lerp(3.8,  1.6, ep),
+          lerp(14.0, 7.5, ep)
         )
-        camera.lookAt(lerp(-0.5, -0.5, p), lerp(1.5, 0.8, p), 0)
+        camera.lookAt(lerp(-0.5, -0.5, ep), lerp(1.5, 0.8, ep), 0)
         fadeGroup(stand3, lerp(0, 1, p))
         fadeGroup(car3,   lerp(0, 1, p))
         fadeGroup(city3,  lerp(0, 1, p))
@@ -299,37 +308,40 @@ function SceneContent() {
 
       /* ── 5-7%: settle to standard shot ── */
       } else if (t < 0.07) {
-        const p = (t - 0.05) / 0.02
+        const p  = (t - 0.05) / 0.02
+        const ep = smootherstep(p)
         camera.position.set(
-          lerp(2.0, 0,   p),
-          lerp(1.6, 1.1, p),
-          lerp(7.5, 5.5, p)
+          lerp(2.0, 0,   ep),
+          lerp(1.6, 1.1, ep),
+          lerp(7.5, 5.5, ep)
         )
-        camera.lookAt(0, lerp(0.8, 1.1, p), 0)
+        camera.lookAt(0, lerp(0.8, 1.1, ep), 0)
         if (stand3) stand3.position.y = 0
         speedVisRef.current = false
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(1.5, 2, p)
 
       /* ── 7-17%: zoom in close to face/chest ── */
       } else if (t < 0.17) {
-        const p = (t - 0.07) / 0.10
+        const p  = (t - 0.07) / 0.10
+        const ep = smootherstep(p)
         camera.position.set(
-          lerp(0,   0.2,  p),
-          lerp(1.1, 1.75, p),
-          lerp(5.5, 2.0,  p)
+          lerp(0,   0.2,  ep),
+          lerp(1.1, 1.75, ep),
+          lerp(5.5, 2.0,  ep)
         )
-        camera.lookAt(0, lerp(1.1, 1.5, p), 0)
+        camera.lookAt(0, lerp(1.1, 1.5, ep), 0)
         if (stand3) stand3.position.y = 0
         speedVisRef.current = false
         if (arcLightRef.current) arcLightRef.current.intensity = lerp(2, 4, p)
 
       /* ── 17-27%: sweep around the right side ── */
       } else if (t < 0.27) {
-        const p = (t - 0.17) / 0.10
+        const p  = (t - 0.17) / 0.10
+        const ep = smootherstep(p)
         camera.position.set(
-          lerp(0.2, 2.5,  p),
-          lerp(1.75, 1.4, p),
-          lerp(2.0, 0.3,  p)
+          lerp(0.2, 2.5,  ep),
+          lerp(1.75, 1.4, ep),
+          lerp(2.0, 0.3,  ep)
         )
         camera.lookAt(0, 1.4, 0)
         if (stand3) stand3.position.y = 0
@@ -385,7 +397,13 @@ function SceneContent() {
       }
       if (shoot3) shoot3.visible = false
 
-      if (car3)   { car3.visible   = true; fadeGroup(car3,   lerp(1, 0, p)) }
+      if (car3) {
+        /* Car drives off-screen to the right while fading out */
+        car3.visible = true
+        const carExitP = smootherstep(p)
+        car3.position.x = lerp(dragState.targetX, 8, carExitP)
+        fadeGroup(car3, lerp(1, 0, Math.min(1, p * 1.3)))
+      }
       if (city3)  { city3.visible  = true; fadeGroup(city3,  lerp(1, 0, p)) }
 
       if (galaxy3) {
@@ -396,15 +414,17 @@ function SceneContent() {
 
       speedVisRef.current = p < 0.5
 
-      const camAngle = lerp(Math.PI, 0, p)
-      const radius   = lerp(2.8, 3.5, p)   // end at z=3.5 (was 2.0) — fly model not zoomed-in
-      const yOffset  = TAKEOFF_Y * lerp(0.8, 0, p)
+      /* Smooth camera arc sweep with ease-in-out */
+      const ep       = smootherstep(p)
+      const camAngle = lerp(Math.PI, 0, ep)
+      const radius   = lerp(2.8, 3.5, ep)   // end at z=3.5 (was 2.0) — fly model not zoomed-in
+      const yOffset  = TAKEOFF_Y * lerp(0.8, 0, ep)
       camera.position.set(
         Math.sin(camAngle) * radius * 0.55,
-        lerp(1.55, 1.1, p) + yOffset,
+        lerp(1.55, 1.1, ep) + yOffset,
         Math.cos(camAngle) * radius
       )
-      camera.lookAt(0, lerp(1.4, 0.9, p) + yOffset * 0.5, 0)
+      camera.lookAt(0, lerp(1.4, 0.9, ep) + yOffset * 0.5, 0)
       if (arcLightRef.current) arcLightRef.current.intensity = lerp(3, 2, p)
     }
 
@@ -653,24 +673,72 @@ function OnLoaded({ onLoaded }) {
   return null
 }
 
+/* ─── F1 car spinner inside the loading screen ─── */
+function LoaderScene3D() {
+  const { scene } = useGLTF('/koenigsegg/scene.gltf')
+  /* Deep-clone scene + materials so this Canvas owns independent copies */
+  const clonedScene = useMemo(() => {
+    const clone = scene.clone(true)
+    clone.traverse(c => {
+      if (!c.isMesh || !c.material) return
+      if (Array.isArray(c.material)) {
+        c.material = c.material.map(m => m.clone())
+      } else {
+        c.material = c.material.clone()
+      }
+    })
+    return clone
+  }, [scene])
+
+  const groupRef = useRef()
+  useFrame(({ clock }) => {
+    if (groupRef.current) {
+      groupRef.current.rotation.y = clock.getElapsedTime() * 0.65
+    }
+  })
+
+  return (
+    <group ref={groupRef} position={[0, -0.35, 0]} rotation={[0, -0.35, 0]}>
+      <primitive object={clonedScene} />
+    </group>
+  )
+}
+
 /* ─── Loading screen ─── */
-function Loader() {
+function Loader({ fadingOut }) {
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 30,
       background: '#000008',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexDirection: 'column', gap: 20, fontFamily: 'monospace',
+      flexDirection: 'column', gap: 12, fontFamily: 'monospace',
+      opacity: fadingOut ? 0 : 1,
+      transition: 'opacity 0.9s ease-out',
+      pointerEvents: fadingOut ? 'none' : 'auto',
     }}>
-      <div style={{
-        width: 60, height: 60, border: '2px solid #00ccff',
-        borderTopColor: 'transparent', borderRadius: '50%',
-        animation: 'ironspin 0.9s linear infinite',
-      }} />
-      <div style={{ color: 'rgba(0,200,255,0.8)', fontSize: 11, letterSpacing: 4 }}>
+      {/* 3D car spinner */}
+      <div style={{ width: '100%', height: '58vh', position: 'relative' }}>
+        <Canvas
+          camera={{ fov: 45, position: [0, 1.3, 5.2] }}
+          gl={{ antialias: true, alpha: true }}
+          dpr={[1, 1.5]}
+          style={{ background: 'transparent' }}
+        >
+          <ambientLight intensity={0.3} />
+          <directionalLight position={[5, 8, 5]} intensity={1.2} color="#fff4d0" />
+          <pointLight position={[0, 2, 2]} color="#00ccff" intensity={6} distance={8} decay={2} />
+          <pointLight position={[-3, 1, -2]} color="#002255" intensity={2} distance={10} decay={2} />
+          <Suspense fallback={null}>
+            <LoaderScene3D />
+          </Suspense>
+        </Canvas>
+      </div>
+      <div style={{ color: 'rgba(0,200,255,0.8)', fontSize: 11, letterSpacing: 4, animation: 'ironpulse 2s infinite' }}>
         LOADING
       </div>
-      <style>{`@keyframes ironspin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`
+        @keyframes ironpulse { 0%,100% { opacity:0.3 } 50% { opacity:1 } }
+      `}</style>
     </div>
   )
 }
@@ -686,7 +754,14 @@ useGLTF.preload('/thanos.glb')
 
 /* ─── Root ─── */
 export default function IronManScene() {
-  const [loaded, setLoaded] = useState(false)
+  const [loaded, setLoaded]             = useState(false)
+  const [loaderHidden, setLoaderHidden] = useState(false)
+
+  const handleLoaded = () => {
+    setLoaded(true)
+    /* Keep loader mounted until CSS fade-out finishes (~900 ms) */
+    setTimeout(() => setLoaderHidden(true), 950)
+  }
 
   /* ── Pointer handlers for car drag interactivity ── */
   const handlePointerDown = (e) => {
@@ -728,7 +803,8 @@ export default function IronManScene() {
         </div>
       )}
 
-      {!loaded && <Loader />}
+      {/* Loader stays mounted during fade-out; fadingOut triggers CSS opacity transition */}
+      {!loaderHidden && <Loader fadingOut={loaded} />}
 
       <Canvas
         gl={{
@@ -746,7 +822,7 @@ export default function IronManScene() {
             <SceneContent />
             <Preload all />
           </ScrollControls>
-          <OnLoaded onLoaded={() => setLoaded(true)} />
+          <OnLoaded onLoaded={handleLoaded} />
         </Suspense>
         <Suspense fallback={null}>
           <Environment preset="night" />
@@ -755,6 +831,8 @@ export default function IronManScene() {
           {/* Higher threshold keeps metallic car surfaces sharp; city emissive lights still glow */}
           <Bloom luminanceThreshold={0.50} luminanceSmoothing={0.9} intensity={0.55} mipmapBlur />
           <Vignette eskil={false} offset={0.1} darkness={0.65} />
+          {/* Subtle chromatic aberration for cinematic lens feel */}
+          <ChromaticAberration offset={[0.0018, 0.0018]} />
         </EffectComposer>
       </Canvas>
     </div>
