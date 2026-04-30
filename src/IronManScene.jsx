@@ -7,6 +7,14 @@ import * as THREE from 'three'
 const lerp = THREE.MathUtils.lerp
 
 /* ─────────────────────────────────────────
+   Module-level drag state (mutated each frame / on pointer events;
+   never triggers React re-renders).
+   targetX / targetZ: smoothed world position for the Koenigsegg.
+   Base position: x=-1.7, z=0.5 (matching the original JSX position).
+───────────────────────────────────────── */
+const dragState = { active: false, lastX: 0, lastY: 0, targetX: -1.7, targetZ: 0.5 }
+
+/* ─────────────────────────────────────────
    Low-poly night city environment (Scene 1 / Act 1)
    Model bounding box (local): X(-21.7..13.6) Y(-25.8..5.3) Z(-9.1..5.7)
 
@@ -185,23 +193,28 @@ function SceneContent() {
   const shoot  = useGLTF('/iron_man_last.glb')
   const car    = useGLTF('/koenigsegg/scene.gltf')
 
-  /* prepare materials – clone + enable transparency, lock depth for solid rendering */
+  /* prepare materials – clone + lock depth; do NOT force transparent=true by default.
+     transparent is toggled dynamically by fadeGroup only when opacity < 1.
+     Keeping transparent=false at full opacity puts meshes in the opaque render queue
+     where GPU depth-test gives pixel-perfect results — eliminates the blur artefact. */
   useEffect(() => {
     const fix = (model) => {
       model.scene.traverse(c => {
         if (!c.isMesh || !c.material) return
-        c.renderOrder = 10  // render characters after city (renderOrder=0) — no see-through
+        c.renderOrder = 10  // render characters after city (renderOrder=0)
         if (Array.isArray(c.material)) {
           c.material = c.material.map(m => {
             const n = m.clone()
-            n.transparent = true
-            n.depthWrite  = true   // always write to depth buffer — prevents see-through
+            n.transparent = false   // opaque by default — only enabled when fading
+            n.depthWrite  = true
+            n.opacity     = 1
             return n
           })
         } else {
           c.material = c.material.clone()
-          c.material.transparent = true
+          c.material.transparent = false
           c.material.depthWrite  = true
+          c.material.opacity     = 1
         }
       })
     }
@@ -218,8 +231,13 @@ function SceneContent() {
     if (!group) return
     group.traverse(c => {
       if (!c.isMesh || !c.material) return
-      if (Array.isArray(c.material)) c.material.forEach(m => { m.opacity = opacity })
-      else c.material.opacity = opacity
+      const mats = Array.isArray(c.material) ? c.material : [c.material]
+      mats.forEach(m => {
+        /* Toggle transparent only when needed — avoids unnecessary shader recompile */
+        const needTrans = opacity < 0.999
+        if (m.transparent !== needTrans) { m.transparent = needTrans; m.needsUpdate = true }
+        m.opacity = opacity
+      })
     })
   }
 
@@ -256,6 +274,12 @@ function SceneContent() {
       if (city3)  city3.visible  = true
       if (galaxy3) galaxy3.visible = false
       if (thanos3) thanos3.visible = false
+
+      /* ── Smooth car toward drag target (mouse-drag interactivity) ── */
+      if (car3) {
+        car3.position.x = lerp(car3.position.x, dragState.targetX, 0.1)
+        car3.position.z = lerp(car3.position.z, dragState.targetZ, 0.1)
+      }
 
       /* ── 0-5%: wide establishing shot – city skyline + Iron Man ── */
       if (t < 0.05) {
@@ -339,6 +363,10 @@ function SceneContent() {
     ════════════════════════════════════ */
     else if (t < 0.42) {
       const p = (t - 0.35) / 0.07
+
+      /* Reset car drag target back to base position during transition */
+      dragState.targetX = lerp(dragState.targetX, -1.7, 0.05)
+      dragState.targetZ = lerp(dragState.targetZ,  0.5, 0.05)
 
       if (stand3) {
         stand3.visible    = true
@@ -660,8 +688,33 @@ useGLTF.preload('/thanos.glb')
 export default function IronManScene() {
   const [loaded, setLoaded] = useState(false)
 
+  /* ── Pointer handlers for car drag interactivity ── */
+  const handlePointerDown = (e) => {
+    dragState.active = true
+    dragState.lastX  = e.clientX
+    dragState.lastY  = e.clientY
+  }
+  const handlePointerMove = (e) => {
+    if (!dragState.active) return
+    const dx = e.clientX - dragState.lastX
+    const dy = e.clientY - dragState.lastY
+    dragState.lastX = e.clientX
+    dragState.lastY = e.clientY
+    /* 0.012 world-units per pixel — feels natural at z≈5 camera distance */
+    dragState.targetX = Math.max(-5.5, Math.min(2.0, dragState.targetX + dx * 0.012))
+    dragState.targetZ = Math.max(-2.0, Math.min(3.0, dragState.targetZ + dy * 0.012))
+  }
+  const handlePointerUp    = () => { dragState.active = false }
+  const handlePointerLeave = () => { dragState.active = false }
+
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
+    <div
+      style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', cursor: 'grab' }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerLeave}
+    >
 
       {loaded && (
         <div style={{
@@ -699,7 +752,8 @@ export default function IronManScene() {
           <Environment preset="night" />
         </Suspense>
         <EffectComposer>
-          <Bloom luminanceThreshold={0.28} luminanceSmoothing={0.9} intensity={0.9} mipmapBlur />
+          {/* Higher threshold keeps metallic car surfaces sharp; city emissive lights still glow */}
+          <Bloom luminanceThreshold={0.50} luminanceSmoothing={0.9} intensity={0.55} mipmapBlur />
           <Vignette eskil={false} offset={0.1} darkness={0.65} />
         </EffectComposer>
       </Canvas>
